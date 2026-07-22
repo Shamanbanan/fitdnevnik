@@ -1,0 +1,10 @@
+node_modules/
+server/node_modules/
+data/
+.env
+preview/
+
+# старые локальные копии/черновики, не часть деплоя
+dnevnik_v23_redesign.html
+dnevnik_v23 (6).html
+ТРЕНИРОВКИ.pdf

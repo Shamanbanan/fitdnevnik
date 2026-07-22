@@ -1,0 +1,17 @@
+services:
+  dnevnik:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - DB_PATH=/data/app.db
+      - INVITE_CODE=${INVITE_CODE}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - NODE_ENV=production
+    volumes:
+      - dnevnik-data:/data
+
+volumes:
+  dnevnik-data:

@@ -1,0 +1,17 @@
+{
+  "name": "dnevnik-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend for the workout diary app: auth + per-user data storage.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0"
+  }
+}
