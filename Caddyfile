@@ -1,0 +1,3 @@
+{$DOMAIN} {
+	reverse_proxy dnevnik:3000
+}

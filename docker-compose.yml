@@ -2,16 +2,33 @@ services:
   dnevnik:
     build: .
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
       - PORT=3000
       - DB_PATH=/data/app.db
       - INVITE_CODE=${INVITE_CODE}
-      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - COOKIE_SECURE=${COOKIE_SECURE:-true}
       - NODE_ENV=production
     volumes:
       - dnevnik-data:/data
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - dnevnik
+
 volumes:
   dnevnik-data:
+  caddy-data:
+  caddy-config:
