@@ -22,6 +22,11 @@
     --accent-glow-strong: rgba(226,146,92,0.25);
     --danger: #A96A63;
     --warmup: #6E8CA0;
+    /* цвет текста/иконок поверх заливки accent или danger (кнопки, чекбоксы, тосты).
+       В тёмном режиме акценты яркие — тёмный текст на них читается лучше; в светлом
+       режиме те же акценты специально затемнены под белый фон, и тёмный текст поверх
+       них уже не читается — поэтому цвет здесь переопределяется для light-режима ниже. */
+    --on-accent: #1a1208;
     --radius: 12px;
     --radius-sm: 8px;
     --radius-lg: 16px;
@@ -117,6 +122,7 @@
     --nav-fade-rgb: 232,223,200;
     --native-color-scheme: light;
     --date-icon-filter: none;
+    --on-accent: #F6F0E0;
   }
   html[data-mode="light"][data-accent="amber"]{ --accent: #9C7A34; --accent-dim: #6E5824; --accent-glow: rgba(156,122,52,0.18); --accent-glow-strong: rgba(156,122,52,0.3); }
   html[data-mode="light"][data-accent="rose"]{ --accent: #9A5555; --accent-dim: #6E3D3D; --accent-glow: rgba(154,85,85,0.18); --accent-glow-strong: rgba(154,85,85,0.3); }
@@ -336,7 +342,7 @@
   .today-selected-info .count .plan-flag{ color: var(--accent); display:inline-flex; align-items:center; gap:3px; }
   .today-selected-actions{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; flex-shrink:0; }
   .btn-start-workout{
-    background: var(--accent); color:#1a1208; border:none; font-family: var(--font-display); font-weight:700;
+    background: var(--accent); color: var(--on-accent); border:none; font-family: var(--font-display); font-weight:700;
     font-size: 12px; letter-spacing:0.03em; text-transform:uppercase; padding: 11px 16px; border-radius: var(--radius);
     cursor:pointer; white-space:nowrap; transition: transform 0.18s cubic-bezier(0.4,0,0.2,1), opacity 0.1s;
   }
@@ -389,6 +395,7 @@
   }
   .plan-dot.done{
     width:10px; height:10px; box-shadow:none; display:flex; align-items:center; justify-content:center;
+    color: var(--on-accent);
   }
   .plan-day.plan-done .num{ color: var(--accent); font-weight:700; }
   .plan-day-panel{
@@ -464,11 +471,11 @@
   .rpe-btn.active.mid{ color: var(--accent); }
   .rpe-btn.active.high{ color: var(--danger); }
   .punch{ width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--border); display:flex; align-items:center; justify-content:center; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim); flex-shrink:0; cursor:pointer; transition: background 0.2s ease, border-color 0.2s ease, transform 0.18s cubic-bezier(0.34,1.56,0.64,1); }
-  .set-row.done .punch{ background: var(--accent); border-color: var(--accent); color: #1a1208; }
+  .set-row.done .punch{ background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   .punch-pulse{ animation: punchPulse 0.26s ease; }
   @keyframes punchPulse{
     0%{ transform: scale(1); }
-    40%{ transform: scale(1.4); background: var(--accent); border-color: var(--accent); color: #1a1208; box-shadow: 0 0 0 6px var(--accent-glow); }
+    40%{ transform: scale(1.4); background: var(--accent); border-color: var(--accent); color: var(--on-accent); box-shadow: 0 0 0 6px var(--accent-glow); }
     100%{ transform: scale(1); }
   }
   .set-input{ width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font-mono); font-size: 16.5px; font-weight: 500; padding: 12px 4px; text-align:center; min-height: 44px; }
@@ -479,7 +486,7 @@
   .check-pulse{ animation: checkPulse 0.28s ease; }
   @keyframes checkPulse{
     0%{ transform: scale(1); }
-    40%{ transform: scale(1.25); background: var(--danger); border-color: var(--danger); color: #1a1208; box-shadow: 0 0 0 6px rgba(169,106,99,0.22); }
+    40%{ transform: scale(1.25); background: var(--danger); border-color: var(--danger); color: var(--on-accent); box-shadow: 0 0 0 6px rgba(169,106,99,0.22); }
     100%{ transform: scale(1); }
   }
   .set-check:active, .punch:active{ transform: scale(0.92); }
@@ -502,7 +509,7 @@
     position: absolute;
     left: 34%; top: 10%;
     width: 24%; height: 55%;
-    border: solid #1a1208;
+    border: solid var(--on-accent);
     border-width: 0 2.2px 2.2px 0;
     transform: rotate(45deg);
   }
@@ -543,7 +550,7 @@
   .mini-btn.accent{ color: var(--accent); border-color: var(--accent-dim); }
   .mini-btn.accent:active{ background: var(--accent-glow); }
 
-  .btn-block{ width:100%; min-height: 50px; background: var(--accent); color:#1a1208; border:none; font-family: var(--font-display); font-weight:700; font-size: 13.5px; letter-spacing: 0.04em; text-transform: uppercase; padding: 13px; border-radius: var(--radius); cursor:pointer; margin-top: 6px; transition: transform 0.18s cubic-bezier(0.4,0,0.2,1), opacity 0.1s; }
+  .btn-block{ width:100%; min-height: 50px; background: var(--accent); color: var(--on-accent); border:none; font-family: var(--font-display); font-weight:700; font-size: 13.5px; letter-spacing: 0.04em; text-transform: uppercase; padding: 13px; border-radius: var(--radius); cursor:pointer; margin-top: 6px; transition: transform 0.18s cubic-bezier(0.4,0,0.2,1), opacity 0.1s; }
   .btn-block:active{ transform: scale(0.98); opacity: 0.9; }
   .btn-secondary{ width:100%; min-height: 46px; background: var(--surface); border: 1px solid var(--border); color: var(--text-dim); font-size: 13.5px; padding: 12px; border-radius: var(--radius); cursor:pointer; margin-top:8px; transition: transform 0.18s cubic-bezier(0.4,0,0.2,1); }
   .btn-secondary:active{ transform: scale(0.98); }
@@ -631,12 +638,12 @@
   .settings-row .desc{ color: var(--text-faint); font-size: 12px; margin-top:2px; }
   .settings-btn{ background: var(--surface-2); border: 1px solid var(--border); color: var(--text); padding: 8px 13px; border-radius: var(--radius); font-size: 12.5px; cursor:pointer; }
 
-  .btn-primary{ min-height: 50px; background: var(--accent); color: #1a1208; border:none; font-family: var(--font-display); font-weight:700; font-size: 14.5px; letter-spacing: 0.03em; text-transform: uppercase; padding: 13px; border-radius: var(--radius); cursor:pointer; transition: transform 0.18s cubic-bezier(0.4,0,0.2,1), opacity 0.1s; }
+  .btn-primary{ min-height: 50px; background: var(--accent); color: var(--on-accent); border:none; font-family: var(--font-display); font-weight:700; font-size: 14.5px; letter-spacing: 0.03em; text-transform: uppercase; padding: 13px; border-radius: var(--radius); cursor:pointer; transition: transform 0.18s cubic-bezier(0.4,0,0.2,1), opacity 0.1s; }
   .btn-primary:active{ transform: scale(0.98); opacity: 0.9; }
   .btn-ghost{ min-height: 50px; background: var(--surface); border: 1px solid var(--border); color: var(--text-dim); font-size: 13.5px; padding: 13px 16px; border-radius: var(--radius); cursor:pointer; transition: transform 0.18s cubic-bezier(0.4,0,0.2,1); }
   .btn-ghost:active{ transform: scale(0.96); }
 
-  .toast{ position: fixed; bottom: 90px; left:50%; transform: translateX(-50%); background: var(--accent); color:#1a1208; padding: 10px 17px; border-radius: var(--radius); font-size: 13px; font-weight:600; opacity:0; pointer-events:none; transition: opacity 0.25s, transform 0.25s; z-index: 50; white-space:nowrap; }
+  .toast{ position: fixed; bottom: 90px; left:50%; transform: translateX(-50%); background: var(--accent); color: var(--on-accent); padding: 10px 17px; border-radius: var(--radius); font-size: 13px; font-weight:600; opacity:0; pointer-events:none; transition: opacity 0.25s, transform 0.25s; z-index: 50; white-space:nowrap; }
   .toast.show{ opacity:1; transform: translateX(-50%) translateY(-6px); }
 
   .back-link{
@@ -1028,6 +1035,14 @@
     font-family: var(--font-body); font-size:15px; padding:11px 12px; border-radius: var(--radius); min-height:44px;
   }
   .auth-field input:focus{ outline:none; border-color: var(--accent-dim); }
+  .password-field{ position:relative; }
+  .password-field input{ padding-right:42px !important; }
+  .password-toggle{
+    position:absolute; right:2px; top:50%; transform:translateY(-50%);
+    width:36px; height:36px; display:flex; align-items:center; justify-content:center;
+    background:transparent; border:none; color:var(--text-faint); cursor:pointer; padding:0;
+  }
+  .password-toggle:active{ color:var(--text-dim); }
   .auth-error{
     background: rgba(184,92,92,0.12); border:1px solid rgba(184,92,92,0.35); color: var(--danger);
     font-size:13px; padding:10px 12px; border-radius: var(--radius-sm); margin-bottom:14px; line-height:1.4;
@@ -1060,7 +1075,10 @@
       </div>
       <div class="auth-field">
         <label for="authPassword">Пароль</label>
-        <input type="password" id="authPassword" autocomplete="current-password" required>
+        <div class="password-field">
+          <input type="password" id="authPassword" autocomplete="current-password" required>
+          <button type="button" class="password-toggle" onclick="togglePasswordVisibility(this)" tabindex="-1" aria-label="Показать пароль"><svg width="17" height="17" viewBox="0 0 20 20" fill="none" style="display:inline-block; vertical-align:middle;"><path d="M1.5 10S4.5 4 10 4s8.5 6 8.5 6-3 6-8.5 6-8.5-6-8.5-6Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" stroke="currentColor" stroke-width="1.4"/></svg></button>
+        </div>
       </div>
       <div class="auth-field" id="authInviteField" style="display:none;">
         <label for="authInvite">Инвайт-код</label>
@@ -1302,7 +1320,10 @@
       </div>
       <div class="field">
         <label>Пароль (подтверди изменение)</label>
-        <input type="password" id="accountUsernamePassword" autocomplete="current-password" placeholder="Текущий пароль">
+        <div class="password-field">
+          <input type="password" id="accountUsernamePassword" autocomplete="current-password" placeholder="Текущий пароль">
+          <button type="button" class="password-toggle" onclick="togglePasswordVisibility(this)" tabindex="-1" aria-label="Показать пароль"><svg width="17" height="17" viewBox="0 0 20 20" fill="none" style="display:inline-block; vertical-align:middle;"><path d="M1.5 10S4.5 4 10 4s8.5 6 8.5 6-3 6-8.5 6-8.5-6-8.5-6Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" stroke="currentColor" stroke-width="1.4"/></svg></button>
+        </div>
       </div>
       <button class="btn-secondary" style="margin-top:2px;" onclick="submitChangeUsername()">Сменить логин</button>
 
@@ -1310,11 +1331,17 @@
 
       <div class="field">
         <label>Текущий пароль</label>
-        <input type="password" id="accountCurrentPassword" autocomplete="current-password" placeholder="Текущий пароль">
+        <div class="password-field">
+          <input type="password" id="accountCurrentPassword" autocomplete="current-password" placeholder="Текущий пароль">
+          <button type="button" class="password-toggle" onclick="togglePasswordVisibility(this)" tabindex="-1" aria-label="Показать пароль"><svg width="17" height="17" viewBox="0 0 20 20" fill="none" style="display:inline-block; vertical-align:middle;"><path d="M1.5 10S4.5 4 10 4s8.5 6 8.5 6-3 6-8.5 6-8.5-6-8.5-6Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" stroke="currentColor" stroke-width="1.4"/></svg></button>
+        </div>
       </div>
       <div class="field">
         <label>Новый пароль</label>
-        <input type="password" id="accountNewPassword" autocomplete="new-password" placeholder="Не короче 8 символов">
+        <div class="password-field">
+          <input type="password" id="accountNewPassword" autocomplete="new-password" placeholder="Не короче 8 символов">
+          <button type="button" class="password-toggle" onclick="togglePasswordVisibility(this)" tabindex="-1" aria-label="Показать пароль"><svg width="17" height="17" viewBox="0 0 20 20" fill="none" style="display:inline-block; vertical-align:middle;"><path d="M1.5 10S4.5 4 10 4s8.5 6 8.5 6-3 6-8.5 6-8.5-6-8.5-6Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" stroke="currentColor" stroke-width="1.4"/></svg></button>
+        </div>
       </div>
       <button class="btn-secondary" style="margin-top:2px;" onclick="submitChangePassword()">Сменить пароль</button>
     </div></div>
@@ -1570,6 +1597,10 @@
         <div class="zdo-select" id="libGroupSelect" style="flex-wrap:wrap;"></div>
       </div>
       <div class="field">
+        <label>Оборудование</label>
+        <div class="zdo-select" id="libEquipmentSelect" style="flex-wrap:wrap;"></div>
+      </div>
+      <div class="field">
         <label>Ссылка на видео (необязательно)</label>
         <input type="text" id="libVideoInput" placeholder="https://youtube.com/…" autocomplete="off" oninput="updateLibVideoWatchLink()">
         <a id="libVideoWatchLink" href="#" target="_blank" rel="noopener" style="display:none; margin-top:6px; font-size:12.5px; color:var(--accent); text-decoration:none; font-weight:600;">▶ Смотреть технику</a>
@@ -1599,6 +1630,13 @@ function setAuthMode(mode){
   document.getElementById("authInviteField").style.display = mode==="register" ? "block" : "none";
   document.getElementById("authSubmitBtn").textContent = mode==="register" ? "Зарегистрироваться" : "Войти";
   document.getElementById("authError").style.display = "none";
+}
+function togglePasswordVisibility(btn){
+  const input = btn.previousElementSibling;
+  if(!input) return;
+  const showing = input.type === "text";
+  input.type = showing ? "password" : "text";
+  btn.innerHTML = showing ? eyeIcon(17) : eyeOffIcon(17);
 }
 function showAuthError(msg){
   const el = document.getElementById("authError");
@@ -1714,6 +1752,7 @@ function createRemoteStorageShim(){
 const localStorage = createRemoteStorageShim();
 
 const MUSCLE_GROUPS = ["Спина","Грудь","Ноги и ягодицы","Плечи","Бицепс","Трицепс","Пресс","Другое"];
+const EQUIPMENT_LIST = ["Без оборудования","Штанга","Гантели","Тренажёр","Блок","Гиря","Резина","Турник/брусья"];
 
 const SEED_LIBRARY_RAW = {
 "Спина": ["Подтягивания широким хватом","Подтягивания параллельным хватом","Подтягивания обратным хватом",
@@ -1883,6 +1922,19 @@ function checkCircleIcon(size=17){
     <path d="M4.5 8.2 L7 10.7 L11.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`;
 }
+function eyeIcon(size=17){
+  return `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" style="display:inline-block; vertical-align:middle;">
+    <path d="M1.5 10S4.5 4 10 4s8.5 6 8.5 6-3 6-8.5 6-8.5-6-8.5-6Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="10" cy="10" r="2.4" stroke="currentColor" stroke-width="1.4"/>
+  </svg>`;
+}
+function eyeOffIcon(size=17){
+  return `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" style="display:inline-block; vertical-align:middle;">
+    <path d="M1.5 10S4.5 4 10 4s8.5 6 8.5 6-3 6-8.5 6-8.5-6-8.5-6Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="10" cy="10" r="2.4" stroke="currentColor" stroke-width="1.4"/>
+    <path d="M2.5 2.5l15 15" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+  </svg>`;
+}
 function pencilIcon(size=17){
   return `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" style="display:inline-block; vertical-align:middle;">
     <path d="M13.6 3.4a1.8 1.8 0 0 1 2.55 2.55L7.3 14.8l-3.4.85.85-3.4L13.6 3.4Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -2029,6 +2081,7 @@ let library; /* заполняется в bootApp() после гидратац�
 let libraryOrigin = "builder";
 let editingLibraryId = null;
 let currentLibGroup = MUSCLE_GROUPS[0];
+let currentLibEquipment = EQUIPMENT_LIST[0];
 
 function loadTemplates(){
   const raw = localStorage.getItem(T_KEY);
@@ -2708,7 +2761,7 @@ function renderPlansScreen(){
     if(done) classes.push("plan-done");
     return `<div class="${classes.join(' ')}" onclick="selectPlanDay('${c.dateStr}')" title="${tpl ? escHtml(tpl.name) + (done ? ' · выполнено' : '') : ''}">
       <span class="num">${c.day}</span>
-      ${tpl ? `<span class="plan-dot${done?' done':''}">${done?'<svg width="6" height="5" viewBox="0 0 6 5"><path d="M0.6 2.6 L2.1 4 L5.4 0.6" fill="none" stroke="#1a1208" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>':''}</span>` : ""}
+      ${tpl ? `<span class="plan-dot${done?' done':''}">${done?'<svg width="6" height="5" viewBox="0 0 6 5"><path d="M0.6 2.6 L2.1 4 L5.4 0.6" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>':''}</span>` : ""}
     </div>`;
   }).join("");
 
@@ -4946,6 +4999,16 @@ document.getElementById("libGroupSelect").addEventListener("click", e=>{
   opt.classList.add("active");
   currentLibGroup = opt.dataset.g;
 });
+document.getElementById("libEquipmentSelect").innerHTML = EQUIPMENT_LIST.map((eq,i)=>
+  `<div class="zdo-opt ${i===0?'active':''}" data-eq="${eq}" style="flex:0 0 auto; padding:8px 12px;">${eq}</div>`
+).join("");
+document.getElementById("libEquipmentSelect").addEventListener("click", e=>{
+  const opt = e.target.closest(".zdo-opt");
+  if(!opt) return;
+  document.querySelectorAll("#libEquipmentSelect .zdo-opt").forEach(o=>o.classList.remove("active"));
+  opt.classList.add("active");
+  currentLibEquipment = opt.dataset.eq;
+});
 
 function openLibraryScreen(origin){
   libraryOrigin = origin;
@@ -4967,7 +5030,9 @@ function resetLibForm(){
   document.getElementById("libNameInput").value = "";
   document.getElementById("libVideoInput").value = "";
   currentLibGroup = MUSCLE_GROUPS[0];
+  currentLibEquipment = EQUIPMENT_LIST[0];
   document.querySelectorAll("#libGroupSelect .zdo-opt").forEach(o=>o.classList.toggle("active", o.dataset.g===MUSCLE_GROUPS[0]));
+  document.querySelectorAll("#libEquipmentSelect .zdo-opt").forEach(o=>o.classList.toggle("active", o.dataset.eq===EQUIPMENT_LIST[0]));
   document.getElementById("libFormTitle").textContent = "Добавить упражнение";
   document.getElementById("libSaveBtn").textContent = "+ Добавить";
   document.getElementById("libCancelBtn").style.display = "none";
@@ -4993,7 +5058,7 @@ function renderLibraryList(){
     html += items.map(it=>`
       <div class="lib-row">
         <button type="button" class="fav-star ${it.fav?'active':''}" style="width:24px;height:24px;" onclick="toggleLibraryFavorite('${escJsAttr(it.id)}')" title="В избранное">${starSvgInline(16)}</button>
-        <span class="n">${escHtml(it.name)}</span>
+        <span class="n">${escHtml(it.name)}${it.equipment && it.equipment!==EQUIPMENT_LIST[0] ? `<small style="display:block; font-family:var(--font-mono); font-size:11px; color:var(--text-faint); margin-top:2px;">${escHtml(it.equipment)}</small>` : ''}</span>
         <div class="actions">
           <button class="ed" onclick="startEditLibraryItem('${escJsAttr(it.id)}')" title="Открыть упражнение" aria-label="Открыть упражнение">${pencilIcon(15)}</button>
         </div>
@@ -5015,7 +5080,9 @@ function startEditLibraryItem(id){
   document.getElementById("libNameInput").value = it.name;
   document.getElementById("libVideoInput").value = it.video || "";
   currentLibGroup = it.group;
+  currentLibEquipment = it.equipment || EQUIPMENT_LIST[0];
   document.querySelectorAll("#libGroupSelect .zdo-opt").forEach(o=>o.classList.toggle("active", o.dataset.g===it.group));
+  document.querySelectorAll("#libEquipmentSelect .zdo-opt").forEach(o=>o.classList.toggle("active", o.dataset.eq===currentLibEquipment));
   document.getElementById("libFormTitle").textContent = "Изменить упражнение";
   document.getElementById("libSaveBtn").textContent = "Сохранить";
   document.getElementById("libCancelBtn").style.display = "block";
@@ -5039,6 +5106,7 @@ function saveLibraryItem(){
     const it = library.find(x=>x.id===editingLibraryId);
     it.name = name;
     it.group = currentLibGroup;
+    it.equipment = currentLibEquipment;
     it.video = video;
     showToast("Изменения сохранены");
   } else {
@@ -5046,7 +5114,7 @@ function saveLibraryItem(){
       showToast("Такое упражнение уже есть в справочнике");
       return;
     }
-    library.push({ id:"u"+Date.now(), name, group: currentLibGroup, video });
+    library.push({ id:"u"+Date.now(), name, group: currentLibGroup, equipment: currentLibEquipment, video });
     showToast("Добавлено в справочник");
   }
   saveLibrary(library);
