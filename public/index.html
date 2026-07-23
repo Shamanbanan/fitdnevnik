@@ -433,11 +433,12 @@
   .merged-list-block > .hist-item, .merged-list-block > .lib-row,
   .merged-list-block > .measure-hist-row, .merged-list-block > .se-ex, .merged-list-block > .added-ex-row{
     background: transparent; border: none; border-radius: 0; margin-bottom: 0; box-shadow: none;
-    border-bottom: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--surface-2);
   }
   .merged-list-block > .exercise:last-child, .merged-list-block > .tpl-card:last-child, .merged-list-block > .stat-ex-card:last-child,
   .merged-list-block > .hist-item:last-child, .merged-list-block > .lib-row:last-child,
   .merged-list-block > .measure-hist-row:last-child, .merged-list-block > .se-ex:last-child, .merged-list-block > .added-ex-row:last-child{ border-bottom: none; }
+  .merged-list-block > .merged-list-header{ margin-bottom:0; padding: 14px 15px 12px; border-bottom: 1px solid var(--surface-2); }
   .merged-list-block > .exercise.exercise-dragging{ border-radius: var(--radius); background: var(--surface); border-bottom-color: transparent; }
   .ex-head{ display:flex; justify-content:space-between; align-items:flex-start; padding: 14px 15px 12px; gap: 9px; cursor: pointer; min-height: 50px; touch-action: none; }
   .ex-head:active{ background: var(--surface-2); }
@@ -1542,6 +1543,10 @@
     <div class="sheet-title" id="exMenuTitle"></div>
     <div class="sheet-sub" id="exMenuInfo"></div>
     <div class="action-sheet-list" id="exMenuList"></div>
+    <div class="note-box" style="margin-top:14px; margin-bottom:2px;">
+      <label>Заметка к упражнению</label>
+      <textarea class="note-textarea" id="exMenuNoteInput" placeholder="Самочувствие, техника…" oninput="onExMenuNoteInput(this)"></textarea>
+    </div>
   </div>
 </div>
 
@@ -2867,8 +2872,8 @@ function renderTodayLog(){
   if(!tpl){ wrap.innerHTML=""; return; }
   sessionRating = 0;
 
-  let html = `<div class="today-header today-header-compact"><span class="today-header-sub">Состав тренировки</span><span class="edit-link" onclick="openTemplateEditor('${tpl.id}')">Изменить состав</span></div>`;
-  html += `<div class="merged-list-block">`;
+  let html = `<div class="merged-list-block">`;
+  html += `<div class="today-header today-header-compact merged-list-header"><span class="today-header-sub">Состав тренировки</span><span class="edit-link" onclick="openTemplateEditor('${tpl.id}')">Изменить состав</span></div>`;
 
   tpl.exercises.forEach((ex,i)=>{
     if(ex.cardio){
@@ -2940,7 +2945,7 @@ function renderTodayLog(){
             <button type="button" class="set-adjust-btn plus" onclick="addTodaySetRow(${i})">+ подход</button>
             <button type="button" class="ex-kebab-btn ex-kebab-btn-lg" onclick="openExMenu(${i})" title="Действия с упражнением" aria-label="Действия с упражнением">${infoIcon(18)}</button>
           </div>
-          <textarea class="note-textarea ex-note-input" data-idx="${i}" placeholder="Заметка к упражнению (самочувствие, техника…)" style="margin-top:10px;" oninput="autoResizeTextarea(this)"></textarea>
+          <textarea class="ex-note-input" data-idx="${i}" aria-hidden="true" tabindex="-1" style="display:none;"></textarea>
         </div>
       </div>
     </div>`;
@@ -3105,6 +3110,7 @@ function selectRpeValue(val){
 }
 
 /* ---- меню действий с упражнением (⋮) ---- */
+let exMenuOpenIdx = null;
 function openExMenu(i){
   const tpl = templates.find(t=>t.id===selectedTemplateId);
   const ex = tpl && tpl.exercises[i];
@@ -3124,10 +3130,21 @@ function openExMenu(i){
   }
   itemsHtml += `<button type="button" class="action-sheet-item danger" onclick="closeExMenu(); clearExerciseSets(${i});">${trashIcon(18)}<span>Сбросить подходы</span></button>`;
   document.getElementById("exMenuList").innerHTML = itemsHtml;
+  exMenuOpenIdx = i;
+  const noteEl = document.querySelector(`#todayLogWrap .exercise[data-idx="${i}"] .ex-note-input`);
+  const menuNote = document.getElementById("exMenuNoteInput");
+  if(menuNote) menuNote.value = noteEl ? noteEl.value : "";
   document.getElementById("exMenuOverlay").classList.add("active");
+}
+function onExMenuNoteInput(el){
+  if(exMenuOpenIdx === null) return;
+  const noteEl = document.querySelector(`#todayLogWrap .exercise[data-idx="${exMenuOpenIdx}"] .ex-note-input`);
+  if(noteEl) noteEl.value = el.value;
+  debouncedCaptureDraft();
 }
 function closeExMenu(){
   document.getElementById("exMenuOverlay").classList.remove("active");
+  exMenuOpenIdx = null;
 }
 
 /* ---- перетаскивание упражнений для изменения порядка: без отдельной ручки —
