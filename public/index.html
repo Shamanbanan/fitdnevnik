@@ -429,12 +429,15 @@
   /* список упражнений/наборов — один цельный блок с разделителями между строками,
      а не отдельные карточки с зазорами */
   .merged-list-block{ background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
-  .merged-list-block > .exercise, .merged-list-block > .tpl-card{
+  .merged-list-block > .exercise, .merged-list-block > .tpl-card, .merged-list-block > .stat-ex-card,
+  .merged-list-block > .hist-item, .merged-list-block > .lib-row,
+  .merged-list-block > .measure-hist-row, .merged-list-block > .se-ex, .merged-list-block > .added-ex-row{
     background: transparent; border: none; border-radius: 0; margin-bottom: 0; box-shadow: none;
     border-bottom: 1px solid var(--border-soft);
   }
-  .merged-list-block > .exercise:last-child, .merged-list-block > .tpl-card:last-child{ border-bottom: none; }
-  .merged-list-block > .exercise.completed{ background: var(--accent-glow); }
+  .merged-list-block > .exercise:last-child, .merged-list-block > .tpl-card:last-child, .merged-list-block > .stat-ex-card:last-child,
+  .merged-list-block > .hist-item:last-child, .merged-list-block > .lib-row:last-child,
+  .merged-list-block > .measure-hist-row:last-child, .merged-list-block > .se-ex:last-child, .merged-list-block > .added-ex-row:last-child{ border-bottom: none; }
   .merged-list-block > .exercise.exercise-dragging{ border-radius: var(--radius); background: var(--surface); border-bottom-color: transparent; }
   .ex-head{ display:flex; justify-content:space-between; align-items:flex-start; padding: 14px 15px 12px; gap: 9px; cursor: pointer; min-height: 50px; touch-action: none; }
   .ex-head:active{ background: var(--surface-2); }
@@ -459,6 +462,7 @@
   .ex-head-actions{ display:flex; align-items:center; gap:4px; flex-shrink:0; margin-top:1px; }
   .ex-kebab-btn{ background:none; border:none; color: var(--text-faint); cursor:pointer; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease; }
   .ex-kebab-btn:active{ background: var(--surface-2); color: var(--text-dim); transform: scale(0.9); }
+  .ex-kebab-btn.accent{ color: var(--accent); background: var(--accent-glow); }
 
   .col-labels{ display:grid; grid-template-columns: 28px 1.15fr 1fr 36px 28px; gap: 6px; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-faint); margin-bottom: 6px; padding-left: 2px; }
   .col-labels span{ align-self:end; }
@@ -594,7 +598,8 @@
   .added-ex-row .info .n{ font-size: 13.5px; font-weight:600; }
   .added-ex-row .info .m{ font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); margin-top:2px; }
   .added-ex-row.dragging{ position:relative; z-index:45; cursor:grabbing; box-shadow: 0 16px 34px rgba(0,0,0,0.5); border-color: var(--accent-dim); opacity:0.97; touch-action: none; }
-  #addedExList.reorder-active .added-ex-row:not(.dragging){ transition: transform 0.18s cubic-bezier(0.4,0,0.2,1); }
+  .merged-list-block > .added-ex-row.dragging{ border-radius: var(--radius); background: var(--surface); border-bottom-color: transparent; }
+  .merged-list-block.reorder-active .added-ex-row:not(.dragging){ transition: transform 0.18s cubic-bezier(0.4,0,0.2,1); }
   .remove-x{ background:none; border:none; color: var(--text-faint); font-size: 18px; cursor:pointer; padding: 8px 10px; min-width:40px; min-height:40px; }
   .remove-x:active{ color: var(--danger); }
 
@@ -1241,7 +1246,7 @@
     </div>
     <div class="prof-card-body"><div class="prof-card-inner">
       <div class="measure-form-grid" style="margin-bottom:12px;">
-        <div class="field"><label>Дата рождения</label><input type="date" id="profileBirthDateInput" onchange="saveProfileFields()"><div class="computed-hint" id="profileAgeComputed"></div></div>
+        <div class="field"><label>Дата рождения</label><input type="date" id="profileBirthDateInput" onchange="saveProfileFields()" style="width:auto; min-width:150px; max-width:170px;"><div class="computed-hint" id="profileAgeComputed"></div></div>
         <div class="field"><label>Рост, см</label><input type="text" inputmode="numeric" id="profileHeightInput" placeholder="180" onchange="saveProfileFields()"></div>
       </div>
       <div class="field">
@@ -1261,7 +1266,7 @@
       </div>
       <div class="field">
         <label>Дата начала тренировок</label>
-        <input type="date" id="profileStartDateInput" onchange="saveProfileFields()">
+        <input type="date" id="profileStartDateInput" onchange="saveProfileFields()" style="width:auto; min-width:150px; max-width:170px;">
         <div class="computed-hint" id="profileExpComputed"></div>
       </div>
       <div class="field">
@@ -2286,7 +2291,7 @@ function renderMeasureHistory(){
     if(!caretEl.innerHTML) caretEl.innerHTML = chevronIcon(10);
     caretEl.classList.toggle("open", measureHistoryExpanded);
   }
-  wrap.innerHTML = dates.map(d=>{
+  wrap.innerHTML = `<div class="merged-list-block">` + dates.map(d=>{
     const entry = all[d];
     const valsHtml = MEASURE_FIELDS.filter(f=>entry[f.key])
       .map(f=>`<span>${f.label}: <b>${entry[f.key]}</b></span>`).join("");
@@ -2300,7 +2305,7 @@ function renderMeasureHistory(){
       </div>
       <div class="measure-hist-vals">${valsHtml}</div>
     </div>`;
-  }).join("");
+  }).join("") + `</div>`;
   wrap.style.maxHeight = measureHistoryExpanded ? wrap.scrollHeight + "px" : "0px";
 }
 
@@ -2937,9 +2942,9 @@ function renderTodayLog(){
           <div class="set-adjust-row">
             <button type="button" class="set-adjust-btn" onclick="removeTodaySetRow(${i})">− подход</button>
             <button type="button" class="set-adjust-btn plus" onclick="addTodaySetRow(${i})">+ подход</button>
+            <button type="button" class="ex-kebab-btn ex-note-toggle-btn" style="width:38px; height:38px; flex-shrink:0;" onclick="toggleExerciseNote(${i}, this)" title="Заметка" aria-label="Заметка">${noteIcon(17)}</button>
             <button type="button" class="ex-kebab-btn" style="width:38px; height:38px; flex-shrink:0;" onclick="openExMenu(${i})" title="Действия с упражнением" aria-label="Действия с упражнением">${infoIcon(17)}</button>
           </div>
-          <button type="button" class="mini-btn ex-note-toggle-btn" style="margin-top:10px;" onclick="toggleExerciseNote(${i}, this)" title="Заметка" aria-label="Заметка">${noteIcon(15)}<span>Заметка</span></button>
           <div class="ex-note-wrap" data-idx="${i}" style="max-height:0; overflow:hidden; transition: max-height 0.3s cubic-bezier(0.4,0,0.2,1);">
             <textarea class="note-textarea ex-note-input" data-idx="${i}" placeholder="Заметка к упражнению (самочувствие, техника…)" style="margin-top:10px; min-height:44px;" oninput="autoResizeTextarea(this)"></textarea>
           </div>
@@ -4134,7 +4139,7 @@ function renderAddedExList(){
     wrap.innerHTML = `<div style="color:var(--text-faint); font-size:12.5px; padding: 6px 2px;">Пока ни одного упражнения — добавь через «+» вверху.</div>`;
     return;
   }
-  wrap.innerHTML = draftExercises.map((ex,i)=>{
+  wrap.innerHTML = `<div class="merged-list-block">` + draftExercises.map((ex,i)=>{
     let meta = ex.cardio ? escHtml(ex.target||'') : `${escHtml(ex.sets)}×${escHtml(ex.reps||'—')} · ${escHtml(ex.rest||'—')} · ЗДО ${escHtml(ex.zdo)}`;
     if(ex.dropset) meta += ' · Дропсет';
     if(ex.superset) meta += ' · ⚭ Суперсет';
@@ -4145,11 +4150,11 @@ function renderAddedExList(){
         <button type="button" class="ex-kebab-btn" onclick="removeDraftExercise(${i})" title="Удалить" aria-label="Удалить" style="color:var(--danger);">${trashIcon(15)}</button>
       </span>
     </div>`;
-  }).join("");
+  }).join("") + `</div>`;
 }
 let draftDragState = null;
 function beginDraftDrag(pointerId, startClientY, row){
-  const wrap = document.getElementById("addedExList");
+  const wrap = row ? row.parentElement : null; /* .merged-list-block — родитель строк, а не #addedExList напрямую */
   if(!row || !wrap) return;
   try{ row.setPointerCapture(pointerId); }catch(err){}
   draftDragState = { row, wrap, pointerId: pointerId, startClientY: startClientY, translateY: 0 };
@@ -4396,7 +4401,11 @@ function renderHistory(){
   sessions.forEach(s=>{
     const d = new Date(s.date + "T00:00:00");
     const monthKey = MONTHS_RU[d.getMonth()] + " " + d.getFullYear();
-    if(monthKey !== lastMonth){ html += `<div class="hist-month">${monthKey}</div>`; lastMonth = monthKey; }
+    if(monthKey !== lastMonth){
+      if(lastMonth !== "") html += `</div>`;
+      html += `<div class="hist-month">${monthKey}</div><div class="merged-list-block">`;
+      lastMonth = monthKey;
+    }
 
     const exRows = s.exercises.map(e=>{
       if(e.cardio){
@@ -4434,6 +4443,7 @@ function renderHistory(){
       <div class="hist-ex"><div class="hist-ex-body">${exRows || "<i>Без данных</i>"}</div></div>
     </div>`;
   });
+  if(lastMonth !== "") html += `</div>`;
   list.innerHTML = html;
 }
 function toggleHistItem(item){
@@ -4495,9 +4505,10 @@ function renderSessionEdit(){
       <button type="button" class="ex-kebab-btn" onclick="removeSessionExercise(${i})" title="Удалить упражнение" aria-label="Удалить упражнение" style="color:var(--danger);">${trashIcon(15)}</button>
     </span>`;
 
+  let exHtml = "";
   s.exercises.forEach((e,i)=>{
     if(e.cardio){
-      html += `<div class="se-ex">
+      exHtml += `<div class="se-ex">
         <div class="se-ex-name" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
           <span>${i+1}. ${escHtml(e.name)}</span>
           ${exActionsHtml(i)}
@@ -4526,7 +4537,7 @@ function renderSessionEdit(){
         <button type="button" class="remove-x" style="min-width:30px; width:30px; min-height:36px; padding:0; font-size:15px;" onclick="removeEditSet(${i},${sIdx})">×</button>
         ${buildRpeBtn(st.rpe)}
       </div>`).join("");
-    html += `<div class="se-ex">
+    exHtml += `<div class="se-ex">
       <div class="se-ex-name" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
         <span>${i+1}. ${escHtml(e.name)}</span>
         ${exActionsHtml(i)}
@@ -4537,6 +4548,7 @@ function renderSessionEdit(){
       <textarea class="note-textarea" placeholder="Заметка к упражнению…" style="margin-top:6px; min-height:44px;" oninput="editSessionData.exercises[${i}].note=this.value">${escHtml(e.note)}</textarea>
     </div>`;
   });
+  html += `<div class="merged-list-block">${exHtml}</div>`;
   html += `<button type="button" class="set-adjust-btn plus" style="width:100%; margin-top:2px; margin-bottom:16px;" onclick="openSessionExercisePicker('add')">+ Добавить упражнение</button>`;
   wrap.innerHTML = html;
 }
@@ -4942,7 +4954,7 @@ function renderStatsExerciseList(){
     wrap.innerHTML = `<div class="empty-hint">Нет упражнений в этой группе с записанными весами.</div>`;
     return;
   }
-  wrap.innerHTML = exList.map(({name, progress})=>{
+  wrap.innerHTML = `<div class="merged-list-block">` + exList.map(({name, progress})=>{
     const last = progress[progress.length-1];
     const pr = progress.reduce((a,b)=> b.weight > a.weight ? b : a);
     const spark = buildSparkline(progress.slice(-10).map(p=>p.weight));
@@ -4956,7 +4968,7 @@ function renderStatsExerciseList(){
         ${spark}
       </div>
     </div>`;
-  }).join("");
+  }).join("") + `</div>`;
 }
 
 let currentExerciseDetail = null;
@@ -5180,14 +5192,14 @@ function renderLibraryList(){
       .sort((a,b)=> (b.fav?1:0) - (a.fav?1:0));
     if(items.length===0) return;
     html += `<div class="lib-group-title">${group} · ${items.length}</div>`;
-    html += items.map(it=>`
+    html += `<div class="merged-list-block">` + items.map(it=>`
       <div class="lib-row">
         <button type="button" class="fav-star ${it.fav?'active':''}" style="width:24px;height:24px;" onclick="toggleLibraryFavorite('${escJsAttr(it.id)}')" title="В избранное">${starSvgInline(16)}</button>
         <span class="n">${escHtml(it.name)}${it.equipment && it.equipment!==EQUIPMENT_LIST[0] ? `<small style="display:block; font-family:var(--font-mono); font-size:11px; color:var(--text-faint); margin-top:2px;">${escHtml(it.equipment)}</small>` : ''}</span>
         <div class="actions">
           <button class="ed" onclick="startEditLibraryItem('${escJsAttr(it.id)}')" title="Открыть упражнение" aria-label="Открыть упражнение">${pencilIcon(15)}</button>
         </div>
-      </div>`).join("");
+      </div>`).join("") + `</div>`;
   });
   wrap.innerHTML = html || (filter ? `<div class="empty-hint">Ничего не найдено по «${escHtml(filter)}».</div>` : `<div class="empty-hint">Справочник пуст.</div>`);
 }
@@ -5494,7 +5506,7 @@ function renderProfileWeightHistory(){
       </div>
     </div>`;
   }).join("");
-  wrap.innerHTML = `<div class="weight-history-scroll">${rowsHtml}</div>`;
+  wrap.innerHTML = `<div class="weight-history-scroll merged-list-block">${rowsHtml}</div>`;
 }
 function editWeightEntry(date){
   openProfCard(document.getElementById("profCard-weight"));
