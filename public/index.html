@@ -426,9 +426,19 @@
 
   .exercise{ background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; overflow:hidden; }
   .exercise.exercise-dragging{ position:relative; z-index:45; box-shadow: 0 16px 34px rgba(0,0,0,0.5); border-color: var(--accent-dim); opacity:0.97; touch-action: none; }
+  /* список упражнений/наборов — один цельный блок с разделителями между строками,
+     а не отдельные карточки с зазорами */
+  .merged-list-block{ background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+  .merged-list-block > .exercise, .merged-list-block > .tpl-card{
+    background: transparent; border: none; border-radius: 0; margin-bottom: 0; box-shadow: none;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .merged-list-block > .exercise:last-child, .merged-list-block > .tpl-card:last-child{ border-bottom: none; }
+  .merged-list-block > .exercise.completed{ background: var(--accent-glow); }
+  .merged-list-block > .exercise.exercise-dragging{ border-radius: var(--radius); background: var(--surface); border-bottom-color: transparent; }
   .ex-head{ display:flex; justify-content:space-between; align-items:flex-start; padding: 14px 15px 12px; gap: 9px; cursor: pointer; min-height: 50px; touch-action: none; }
   .ex-head:active{ background: var(--surface-2); }
-  #todayLogWrap.reorder-active .exercise:not(.exercise-dragging){ transition: transform 0.18s cubic-bezier(0.4,0,0.2,1); }
+  .merged-list-block.reorder-active .exercise:not(.exercise-dragging){ transition: transform 0.18s cubic-bezier(0.4,0,0.2,1); }
   .exercise.completed{ border-color: var(--accent-dim); }
   .ex-done-check{ display:none; align-items:center; color: var(--accent); flex-shrink:0; margin-top:2px; }
   .exercise.completed .ex-done-check{ display:inline-flex; }
@@ -558,6 +568,13 @@
   .field{ margin-bottom: 12px; }
   .field label{ display:block; font-size: 12px; color: var(--text-faint); margin-bottom: 5px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing:0.04em; }
   .field input[type=text], .field input[type=number], .field input[type=password]{ width:100%; min-height: 44px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: var(--radius); }
+  .equipment-btn{
+    width:100%; min-height:44px; background: var(--surface); border:1px solid var(--border); color: var(--text);
+    padding: 10px 12px; border-radius: var(--radius); display:flex; align-items:center; justify-content:space-between;
+    font-size:14.5px; font-family: inherit; text-align:left; cursor:pointer;
+  }
+  .equipment-btn:active{ background: var(--surface-2); }
+  .equipment-btn .chev{ color: var(--text-faint); flex-shrink:0; margin-left:8px; display:flex; }
   .field-row{ display:flex; gap:8px; }
   .field-row .field{ flex:1; }
   .computed-hint{ font-family: var(--font-mono); font-size: 11.5px; color: var(--accent); margin-top: 6px; min-height: 14px; }
@@ -670,7 +687,7 @@
   /* ---- note textarea ---- */
   .note-box{ margin: 4px 0 16px; }
   .note-box label{ display:block; font-size: 12px; color: var(--text-faint); margin-bottom: 5px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing:0.04em; }
-  .note-textarea{ width:100%; min-height: 66px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: var(--radius); font-family: var(--font-body); font-size: 14.5px; resize: vertical; }
+  .note-textarea{ width:100%; min-height: 66px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: var(--radius); font-family: var(--font-body); font-size: 14.5px; resize: none; overflow: hidden; }
   .note-textarea::placeholder{ color: var(--text-faint); }
 
 
@@ -1253,11 +1270,11 @@
       </div>
       <div class="field">
         <label>Травмы и ограничения</label>
-        <textarea class="note-textarea" id="profileInjuriesInput" placeholder="Что стоит учитывать при подборе упражнений…" onchange="saveProfileFields()" style="min-height:60px;"></textarea>
+        <textarea class="note-textarea" id="profileInjuriesInput" placeholder="Что стоит учитывать при подборе упражнений…" onchange="saveProfileFields()" oninput="autoResizeTextarea(this)" style="min-height:60px;"></textarea>
       </div>
       <div class="field" style="margin-bottom:2px;">
         <label>Заметка о себе</label>
-        <textarea class="note-textarea" id="profileNoteInput" placeholder="Всё остальное, что важно помнить…" onchange="saveProfileFields()"></textarea>
+        <textarea class="note-textarea" id="profileNoteInput" placeholder="Всё остальное, что важно помнить…" onchange="saveProfileFields()" oninput="autoResizeTextarea(this)"></textarea>
       </div>
     </div></div>
   </div>
@@ -1598,7 +1615,10 @@
       </div>
       <div class="field">
         <label>Оборудование</label>
-        <div class="zdo-select" id="libEquipmentSelect" style="flex-wrap:wrap;"></div>
+        <button type="button" class="equipment-btn" id="libEquipmentBtn" onclick="openLibEquipmentSheet()">
+          <span id="libEquipmentBtnLabel"></span>
+          <span class="chev"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg></span>
+        </button>
       </div>
       <div class="field">
         <label>Ссылка на видео (необязательно)</label>
@@ -1610,6 +1630,21 @@
         <button class="btn-secondary" style="margin-top:2px; display:none;" id="libCancelBtn" onclick="cancelLibraryEdit()">Отмена</button>
       </div>
       <button class="btn-secondary" id="libDeleteBtn" style="display:none; margin-top:8px; color:var(--danger); border-color:rgba(184,92,92,0.35);" onclick="deleteLibraryItem(editingLibraryId)">Удалить упражнение</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-overlay" id="libEquipmentSheetOverlay" onclick="if(event.target===this) closeLibEquipmentSheet();">
+  <div class="sheet-panel" onpointerdown="onSheetPanelPointerDown(event)">
+    <div class="sheet-handle" onpointerdown="startSheetDrag(event, this)"></div>
+    <div class="add-ex-box add-ex-box-sheet">
+      <div class="title">Оборудование</div>
+      <div id="libEquipmentOptionsList" style="display:flex; flex-direction:column; gap:6px; margin-bottom:16px; max-height:40vh; overflow-y:auto;"></div>
+      <div class="field">
+        <label>Своё оборудование</label>
+        <input type="text" id="libEquipmentCustomInput" placeholder="Например: Эспандер" autocomplete="off">
+      </div>
+      <button class="btn-secondary" onclick="saveCustomEquipment()">Добавить и выбрать</button>
     </div>
   </div>
 </div>
@@ -1958,6 +1993,12 @@ function infoIcon(size=16){
     <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.3"/>
     <circle cx="8" cy="4.9" r="0.95" fill="currentColor"/>
     <path d="M8 7.3v4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+  </svg>`;
+}
+function noteIcon(size=15){
+  return `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" style="display:inline-block; vertical-align:middle;">
+    <path d="M4 3.5h9l3 3v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M7 9h6M7 12.5h6M7 15.5h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
   </svg>`;
 }
 function kebabIcon(size=18){
@@ -2514,7 +2555,8 @@ const SHEET_CLOSE_FNS = {
   exMenuOverlay: ()=>closeExMenu(),
   addExerciseSheetOverlay: ()=>closeAddExerciseSheet(),
   sessionExPickerOverlay: ()=>closeSessionExPicker(),
-  libAddSheetOverlay: ()=>closeLibAddSheet()
+  libAddSheetOverlay: ()=>closeLibAddSheet(),
+  libEquipmentSheetOverlay: ()=>closeLibEquipmentSheet()
 };
 let sheetDragState = null;
 function beginSheetDrag(e, originEl, immediate){
@@ -2614,7 +2656,7 @@ function renderToday(){
         </div>
         <div class="today-selected-actions">
           <span class="edit-link" onclick="todayPickerOpen=true; renderToday();">Сменить</span>
-          ${started ? '' : `<button type="button" class="btn-start-workout" onclick="startWorkout()">Начать тренировку</button>`}
+          ${started ? `<span class="edit-link danger-ish" onclick="clearTodayForm()">Сброс</span>` : `<button type="button" class="btn-start-workout" onclick="startWorkout()">Начать тренировку</button>`}
         </div>
       </div>`;
   } else {
@@ -2825,6 +2867,7 @@ function renderTodayLog(){
   sessionRating = 0;
 
   let html = `<div class="today-header today-header-compact"><span class="today-header-sub">Состав тренировки</span><span class="edit-link" onclick="openTemplateEditor('${tpl.id}')">Изменить состав</span></div>`;
+  html += `<div class="merged-list-block">`;
 
   tpl.exercises.forEach((ex,i)=>{
     if(ex.cardio){
@@ -2883,7 +2926,6 @@ function renderTodayLog(){
           </div>
         </div>
         <div class="ex-head-actions">
-          <button type="button" class="ex-kebab-btn" onclick="event.stopPropagation(); openExMenu(${i})" title="Действия с упражнением" aria-label="Действия с упражнением">${infoIcon(17)}</button>
           <span class="ex-done-check">${checkCircleIcon(18)}</span>
           <span class="chevron">${chevronIcon(11)}</span>
         </div>
@@ -2895,8 +2937,12 @@ function renderTodayLog(){
           <div class="set-adjust-row">
             <button type="button" class="set-adjust-btn" onclick="removeTodaySetRow(${i})">− подход</button>
             <button type="button" class="set-adjust-btn plus" onclick="addTodaySetRow(${i})">+ подход</button>
+            <button type="button" class="ex-kebab-btn" style="width:38px; height:38px; flex-shrink:0;" onclick="openExMenu(${i})" title="Действия с упражнением" aria-label="Действия с упражнением">${infoIcon(17)}</button>
           </div>
-          <textarea class="note-textarea ex-note-input" data-idx="${i}" placeholder="Заметка к упражнению (самочувствие, техника…)" style="margin-top:10px; min-height:44px;"></textarea>
+          <button type="button" class="mini-btn ex-note-toggle-btn" style="margin-top:10px;" onclick="toggleExerciseNote(${i}, this)" title="Заметка" aria-label="Заметка">${noteIcon(15)}<span>Заметка</span></button>
+          <div class="ex-note-wrap" data-idx="${i}" style="max-height:0; overflow:hidden; transition: max-height 0.3s cubic-bezier(0.4,0,0.2,1);">
+            <textarea class="note-textarea ex-note-input" data-idx="${i}" placeholder="Заметка к упражнению (самочувствие, техника…)" style="margin-top:10px; min-height:44px;" oninput="autoResizeTextarea(this)"></textarea>
+          </div>
         </div>
       </div>
     </div>`;
@@ -2904,10 +2950,11 @@ function renderTodayLog(){
       html += `<div class="superset-connector">⚭ суперсет со следующим</div>`;
     }
   });
+  html += `</div>`;
 
   html += `
   <div class="today-bottom-actions">
-    <button type="button" class="btn-ghost btn-ghost-compact" onclick="clearTodayForm()">Сброс</button>
+    <button type="button" class="btn-ghost btn-ghost-compact" onclick="clearAllExerciseSets()">Очистить упражнения</button>
     <button type="button" class="btn-primary btn-primary-compact" onclick="finishWorkout()">Закончить</button>
   </div>`;
 
@@ -2951,6 +2998,35 @@ let suppressNextExHeadClick = false;
 function onExHeadClick(head){
   if(suppressNextExHeadClick){ suppressNextExHeadClick = false; return; }
   toggleExercise(head.parentElement);
+}
+function autoResizeTextarea(el){
+  el.style.height = "auto";
+  el.style.height = el.scrollHeight + "px";
+}
+function toggleExerciseNote(i, btn){
+  const wrap = document.querySelector(`#todayLogWrap .ex-note-wrap[data-idx="${i}"]`);
+  if(!wrap) return;
+  const isOpen = wrap.classList.contains("open");
+  if(isOpen){
+    wrap.style.maxHeight = wrap.scrollHeight + "px";
+    void wrap.offsetHeight;
+    requestAnimationFrame(()=>{ wrap.style.maxHeight = "0px"; });
+    wrap.classList.remove("open");
+    btn.classList.remove("accent");
+  } else {
+    wrap.classList.add("open");
+    const ta = wrap.querySelector("textarea");
+    if(ta) autoResizeTextarea(ta);
+    wrap.style.maxHeight = wrap.scrollHeight + "px";
+    btn.classList.add("accent");
+    const onEnd = (e)=>{
+      if(e && e.propertyName && e.propertyName !== "max-height") return;
+      wrap.removeEventListener("transitionend", onEnd);
+      if(wrap.classList.contains("open")) wrap.style.maxHeight = "none";
+    };
+    wrap.addEventListener("transitionend", onEnd);
+    setTimeout(()=>{ if(ta) ta.focus(); }, 320);
+  }
 }
 /* call after content inside an OPEN exercise changes height (e.g. add/remove a set) */
 function resyncOpenExerciseHeight(card){
@@ -3082,8 +3158,8 @@ function closeExMenu(){
 }
 
 /* ---- перетаскивание упражнений для изменения порядка: без отдельной ручки —
-   задержи палец на шапке упражнения ~1 сек, граница подсветится, и можно тащить ---- */
-const HOLD_DRAG_MS = 1000;
+   задержи палец на шапке упражнения ~0.5 сек, граница подсветится, и можно тащить ---- */
+const HOLD_DRAG_MS = 550;
 const HOLD_DRAG_TOLERANCE = 12;
 let holdDragTimer = null;
 let holdDragStart = null;
@@ -3201,7 +3277,7 @@ document.addEventListener("pointercancel", cancelHoldDrag);
 
 let exDragState = null;
 function beginExerciseDrag(pointerId, startClientY, card){
-  const wrap = document.getElementById("todayLogWrap");
+  const wrap = card ? card.parentElement : null; /* .merged-list-block — родитель карточек, а не #todayLogWrap напрямую */
   if(!card || !wrap) return;
   suppressNextExHeadClick = true;
   try{ card.setPointerCapture(pointerId); }catch(err){}
@@ -3599,6 +3675,28 @@ function clearExerciseSets(i){
     showToast("Подходы очищены");
   }, "Сбросить");
 }
+function clearAllExerciseSets(){
+  const cards = document.querySelectorAll("#todayLogWrap .exercise");
+  if(cards.length === 0){ showToast("Нет упражнений"); return; }
+  confirmAction("Очистить все подходы и заметки во всех упражнениях? Тренировка не закроется.", ()=>{
+    stopGlobalRestTimer();
+    cards.forEach(card=>{
+      card.querySelectorAll(".set-row").forEach(r=>{
+        const w = r.querySelector(".weight"); if(w) w.value = "";
+        const rep = r.querySelector(".reps"); if(rep) rep.value = "";
+        r.classList.remove("done");
+      });
+      card.querySelectorAll(".rpe-btn").forEach(b=>setRpeBtnState(b, ""));
+      const noteEl = card.querySelector(".ex-note-input");
+      if(noteEl){ noteEl.value = ""; autoResizeTextarea(noteEl); }
+      const cb = card.querySelector('input[type=checkbox]');
+      if(cb) cb.checked = false;
+    });
+    refreshAllCompletionStates();
+    captureDraftFromDOM();
+    showToast("Упражнения очищены");
+  }, "Очистить");
+}
 function refreshAllCompletionStates(){
   document.querySelectorAll("#todayLogWrap .exercise").forEach((card,i)=>{
     if(card.querySelector(".cardio-row")){ updateCardioCompletionState(i); }
@@ -3704,7 +3802,14 @@ function restoreDraftIntoDOM(){
     });
     if(dEx.note){
       const noteEl = div.querySelector(".ex-note-input");
-      if(noteEl) noteEl.value = dEx.note;
+      if(noteEl){
+        noteEl.value = dEx.note;
+        autoResizeTextarea(noteEl);
+        const wrap = div.querySelector(".ex-note-wrap");
+        const toggleBtn = div.querySelector(".ex-note-toggle-btn");
+        if(wrap){ wrap.classList.add("open"); wrap.style.maxHeight = "none"; }
+        if(toggleBtn) toggleBtn.classList.add("accent");
+      }
     }
   });
 }
@@ -3817,7 +3922,7 @@ function renderBuilderList(){
     wrap.innerHTML = `<div class="empty-hint">Ничего не найдено по «${escHtml(filter)}».</div>`;
     return;
   }
-  wrap.innerHTML = list.map(t=>{
+  wrap.innerHTML = `<div class="merged-list-block">` + list.map(t=>{
     const exListHtml = t.exercises.map((ex,i)=>{
       const meta = ex.cardio ? escHtml(ex.target || '') : `${ex.sets}×${escHtml(ex.reps||'')}`;
       return `<div class="tpl-ex-row"><span class="i">${i+1}</span><span class="n">${escHtml(ex.name)}</span><span class="m">${meta}</span></div>`;
@@ -3842,7 +3947,7 @@ function renderBuilderList(){
         </div>
       </div>
     </div>`;
-  }).join("");
+  }).join("") + `</div>`;
 }
 
 function openTplCard(card){
@@ -4999,16 +5104,36 @@ document.getElementById("libGroupSelect").addEventListener("click", e=>{
   opt.classList.add("active");
   currentLibGroup = opt.dataset.g;
 });
-document.getElementById("libEquipmentSelect").innerHTML = EQUIPMENT_LIST.map((eq,i)=>
-  `<div class="zdo-opt ${i===0?'active':''}" data-eq="${eq}" style="flex:0 0 auto; padding:8px 12px;">${eq}</div>`
-).join("");
-document.getElementById("libEquipmentSelect").addEventListener("click", e=>{
-  const opt = e.target.closest(".zdo-opt");
-  if(!opt) return;
-  document.querySelectorAll("#libEquipmentSelect .zdo-opt").forEach(o=>o.classList.remove("active"));
-  opt.classList.add("active");
-  currentLibEquipment = opt.dataset.eq;
-});
+/* оборудование — кнопка открывает лист с выбором; можно вписать своё, и оно
+   появится в списке вариантов и для остальных упражнений (берётся прямо из library) */
+function getAllEquipmentOptions(){
+  const used = library.map(x=>x.equipment).filter(Boolean);
+  return Array.from(new Set([...EQUIPMENT_LIST, ...used]));
+}
+function openLibEquipmentSheet(){
+  renderLibEquipmentOptions();
+  document.getElementById("libEquipmentCustomInput").value = "";
+  document.getElementById("libEquipmentSheetOverlay").classList.add("active");
+}
+function closeLibEquipmentSheet(){
+  document.getElementById("libEquipmentSheetOverlay").classList.remove("active");
+}
+function renderLibEquipmentOptions(){
+  const list = document.getElementById("libEquipmentOptionsList");
+  list.innerHTML = getAllEquipmentOptions().map(eq=>
+    `<div class="picker-ex-row" onclick="selectLibEquipment('${escJsAttr(eq)}')">${eq===currentLibEquipment?'<span style="color:var(--accent); margin-right:6px;">✓</span>':''}${escHtml(eq)}</div>`
+  ).join("");
+}
+function selectLibEquipment(eq){
+  currentLibEquipment = eq;
+  document.getElementById("libEquipmentBtnLabel").textContent = eq;
+  closeLibEquipmentSheet();
+}
+function saveCustomEquipment(){
+  const val = document.getElementById("libEquipmentCustomInput").value.trim();
+  if(!val){ showToast("Введи название оборудования"); return; }
+  selectLibEquipment(val);
+}
 
 function openLibraryScreen(origin){
   libraryOrigin = origin;
@@ -5032,7 +5157,7 @@ function resetLibForm(){
   currentLibGroup = MUSCLE_GROUPS[0];
   currentLibEquipment = EQUIPMENT_LIST[0];
   document.querySelectorAll("#libGroupSelect .zdo-opt").forEach(o=>o.classList.toggle("active", o.dataset.g===MUSCLE_GROUPS[0]));
-  document.querySelectorAll("#libEquipmentSelect .zdo-opt").forEach(o=>o.classList.toggle("active", o.dataset.eq===EQUIPMENT_LIST[0]));
+  document.getElementById("libEquipmentBtnLabel").textContent = EQUIPMENT_LIST[0];
   document.getElementById("libFormTitle").textContent = "Добавить упражнение";
   document.getElementById("libSaveBtn").textContent = "+ Добавить";
   document.getElementById("libCancelBtn").style.display = "none";
@@ -5082,7 +5207,7 @@ function startEditLibraryItem(id){
   currentLibGroup = it.group;
   currentLibEquipment = it.equipment || EQUIPMENT_LIST[0];
   document.querySelectorAll("#libGroupSelect .zdo-opt").forEach(o=>o.classList.toggle("active", o.dataset.g===it.group));
-  document.querySelectorAll("#libEquipmentSelect .zdo-opt").forEach(o=>o.classList.toggle("active", o.dataset.eq===currentLibEquipment));
+  document.getElementById("libEquipmentBtnLabel").textContent = currentLibEquipment;
   document.getElementById("libFormTitle").textContent = "Изменить упражнение";
   document.getElementById("libSaveBtn").textContent = "Сохранить";
   document.getElementById("libCancelBtn").style.display = "block";
@@ -5296,6 +5421,8 @@ function renderProfileScreen(){
   document.getElementById("profileGoalInput").value = p.goal || "";
   document.getElementById("profileInjuriesInput").value = p.injuries || "";
   document.getElementById("profileNoteInput").value = p.note || "";
+  autoResizeTextarea(document.getElementById("profileInjuriesInput"));
+  autoResizeTextarea(document.getElementById("profileNoteInput"));
   document.querySelectorAll(".gender-chip").forEach(c=>c.classList.toggle("active", c.dataset.g === p.gender));
   document.querySelectorAll("#profileLevelChips .chip-opt").forEach(c=>c.classList.toggle("active", c.dataset.lvl === p.level));
   document.querySelectorAll("#weightUnitChips .chip-opt").forEach(c=>c.classList.toggle("active", c.dataset.unit === loadWeightUnit()));
