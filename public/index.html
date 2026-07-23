@@ -29,6 +29,9 @@
     --font-display: 'Oswald', sans-serif;
     --font-body: 'Inter', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
+    --nav-fade-rgb: 21,19,15;
+    --native-color-scheme: dark;
+    --date-icon-filter: invert(0.75) brightness(1.3);
   }
   *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .punch, .set-check, .set-chip, .zdo-opt, .gender-chip, .mini-btn, .tab, .back-link, .edit-link,
@@ -85,6 +88,27 @@
     --accent-glow: rgba(151,169,224,0.15);
     --accent-glow-strong: rgba(151,169,224,0.26);
   }
+  /* единственная светлая тема — песочная, а не просто другой акцент: переопределяет
+     всю базовую палитру (фон/поверхности/текст), а не только --accent */
+  html[data-theme="sand"]{
+    --bg: #E8DFC8;
+    --surface: #F6F0E0;
+    --surface-2: #EEE4CC;
+    --border: #D3C4A0;
+    --border-soft: #DFD3B4;
+    --text: #362B1C;
+    --text-dim: #6B5A3E;
+    --text-faint: #9A896A;
+    --accent: #C0672E;
+    --accent-dim: #8A4B22;
+    --accent-glow: rgba(192,103,46,0.16);
+    --accent-glow-strong: rgba(192,103,46,0.28);
+    --danger: #A14C3F;
+    --warmup: #3E647C;
+    --nav-fade-rgb: 232,223,200;
+    --native-color-scheme: light;
+    --date-icon-filter: none;
+  }
 
   html{ scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
   *::-webkit-scrollbar{ width: 7px; height: 7px; }
@@ -109,10 +133,10 @@
     content: "";
     position: absolute; inset: 0;
     background: linear-gradient(180deg,
-      rgba(21,19,15,0) 0%,
-      rgba(21,19,15,0.5) 30%,
-      rgba(21,19,15,0.86) 62%,
-      rgba(21,19,15,0.95) 100%);
+      rgba(var(--nav-fade-rgb),0) 0%,
+      rgba(var(--nav-fade-rgb),0.5) 30%,
+      rgba(var(--nav-fade-rgb),0.86) 62%,
+      rgba(var(--nav-fade-rgb),0.95) 100%);
     backdrop-filter: blur(14px) saturate(1.3);
     -webkit-backdrop-filter: blur(14px) saturate(1.3);
     -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 34%);
@@ -221,10 +245,10 @@
     width:100%; background: var(--surface); border: 1px solid var(--border);
     color: var(--text); font-family: var(--font-mono); font-size: 14.5px;
     padding: 10px 12px; border-radius: var(--radius); min-height:44px;
-    color-scheme: dark;
+    color-scheme: var(--native-color-scheme);
   }
   input[type=date]::-webkit-calendar-picker-indicator{
-    filter: invert(0.75) brightness(1.3);
+    filter: var(--date-icon-filter);
     cursor: pointer;
     border-radius: var(--radius);
   }
@@ -897,7 +921,10 @@
 
   /* ---- in-app confirm dialog (replaces native confirm(), which some webviews block) ---- */
   .confirm-overlay{
-    position: fixed; inset:0; z-index: 200; display:none;
+    /* выше .sheet-overlay (210) — подтверждение должно быть видно, даже если его
+       вызвали кнопкой внутри уже открытого bottom sheet (например, "Удалить" в
+       редакторе справочника) */
+    position: fixed; inset:0; z-index: 220; display:none;
     align-items:center; justify-content:center; padding: 24px;
     background: rgba(10,9,7,0.62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   }
@@ -949,8 +976,18 @@
   .rpe-sheet-clear:active{ background: var(--surface); }
 
   /* ---- экран входа/регистрации ---- */
+  .boot-loading{
+    position:fixed; inset:0; z-index:110; display:flex; align-items:center; justify-content:center;
+    background: var(--bg);
+  }
+  .boot-spinner{
+    width:28px; height:28px; border-radius:50%;
+    border:3px solid var(--border); border-top-color: var(--accent);
+    animation: bootSpin 0.7s linear infinite;
+  }
+  @keyframes bootSpin{ to{ transform: rotate(360deg); } }
   .auth-gate{
-    position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center;
+    position:fixed; inset:0; z-index:100; display:none; align-items:center; justify-content:center;
     padding: 20px; background: var(--bg);
     background-image: radial-gradient(ellipse at top, rgba(208,137,90,0.055), transparent 55%);
   }
@@ -999,6 +1036,8 @@
 </head>
 <body>
 
+<div class="boot-loading" id="bootLoading"><div class="boot-spinner"></div></div>
+
 <div class="auth-gate" id="authGate">
   <div class="auth-card">
     <div class="auth-title">Дневник тренировок</div>
@@ -1037,6 +1076,10 @@
       <span class="today-card-date-label">Дата</span>
       <input type="date" id="sessionDate">
     </div>
+    <div class="search-field" id="todayTplSearchField" style="display:none; margin: 12px 0 0;">
+      <span class="search-ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+      <input type="text" id="todayTplSearchInput" placeholder="Найти набор…" autocomplete="off" oninput="debouncedRenderToday()">
+    </div>
     <div id="templatePickerWrap"></div>
   </div>
   <div id="todayLogWrap"></div>
@@ -1061,6 +1104,10 @@
 <div id="screen-plans" class="swipe-page">
 <div class="page-inner">
   <div class="page-heading">Планы</div>
+  <div class="search-field" id="planTplSearchField" style="display:none;">
+    <span class="search-ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+    <input type="text" id="planTplSearchInput" placeholder="Найти набор…" autocomplete="off" oninput="debouncedRenderPlansScreen()">
+  </div>
   <div id="plansWrap"></div>
 </div>
 </div>
@@ -1214,6 +1261,9 @@
     </div>
     <div class="theme-swatch" data-theme="dusk" style="--sw:#97A9E0;">
       <svg class="swatch-check" viewBox="0 0 24 24"><polyline points="5 12.5 9.5 17 19 6.5"/></svg>
+    </div>
+    <div class="theme-swatch" data-theme="sand" style="--sw:#E8DFC8;">
+      <svg class="swatch-check" viewBox="0 0 24 24" style="stroke:#362B1C;"><polyline points="5 12.5 9.5 17 19 6.5"/></svg>
     </div>
       </div>
       <div class="field" style="margin-top:16px; margin-bottom:2px;">
@@ -1477,12 +1527,14 @@
       </div>
       <div class="field">
         <label>Ссылка на видео (необязательно)</label>
-        <input type="text" id="libVideoInput" placeholder="https://youtube.com/…" autocomplete="off">
+        <input type="text" id="libVideoInput" placeholder="https://youtube.com/…" autocomplete="off" oninput="updateLibVideoWatchLink()">
+        <a id="libVideoWatchLink" href="#" target="_blank" rel="noopener" style="display:none; margin-top:6px; font-size:12.5px; color:var(--accent); text-decoration:none; font-weight:600;">▶ Смотреть технику</a>
       </div>
       <div style="display:flex; gap:8px;">
         <button class="btn-secondary" style="margin-top:2px;" onclick="saveLibraryItem()" id="libSaveBtn">+ Добавить</button>
         <button class="btn-secondary" style="margin-top:2px; display:none;" id="libCancelBtn" onclick="cancelLibraryEdit()">Отмена</button>
       </div>
+      <button class="btn-secondary" id="libDeleteBtn" style="display:none; margin-top:8px; color:var(--danger); border-color:rgba(184,92,92,0.35);" onclick="deleteLibraryItem(editingLibraryId)">Удалить упражнение</button>
     </div>
   </div>
 </div>
@@ -1534,10 +1586,13 @@ async function submitAuthForm(e){
 async function enterApp(){
   const res = await fetch("/api/bootstrap", { credentials: "same-origin" });
   if(!res.ok){
+    document.getElementById("bootLoading").style.display = "none";
+    document.getElementById("authGate").style.display = "flex";
     showAuthError("Сессия не подтверждена, попробуй войти ещё раз");
     return;
   }
   localStorage._hydrate(await res.json());
+  document.getElementById("bootLoading").style.display = "none";
   document.getElementById("authGate").style.display = "none";
   document.getElementById("appRoot").style.display = "block";
   await bootApp();
@@ -2390,7 +2445,9 @@ let todayPickerOpen = true;
 
 function renderToday(){
   const wrap = document.getElementById("templatePickerWrap");
+  const searchField = document.getElementById("todayTplSearchField");
   if(templates.length === 0){
+    searchField.style.display = "none";
     wrap.innerHTML = `<div class="empty-hint"><div class="big">＋</div>Пока нет ни одного набора.<br><span class="link-btn" onclick="switchView('builder')">Создать первую тренировку →</span></div>`;
     document.getElementById("todayLogWrap").innerHTML = "";
     return;
@@ -2405,6 +2462,7 @@ function renderToday(){
 
   let inner = "";
   if(selectedTpl && !todayPickerOpen){
+    searchField.style.display = "none";
     const plannedForRef = plannedId === selectedTpl.id;
     if(plannedTpl && !plannedForRef){
       inner += `<div class="today-plan-note">${planIconSmall(13)} На ${dateLabel} запланировано: <b>${escHtml(plannedTpl.name)}</b><span class="link-btn" onclick="selectTemplate('${plannedTpl.id}')">Выбрать</span></div>`;
@@ -2421,6 +2479,8 @@ function renderToday(){
         </div>
       </div>`;
   } else {
+    searchField.style.display = "";
+    const searchTerm = document.getElementById("todayTplSearchInput").value.trim().toLowerCase();
     let sorted = templates.slice().sort((a,b)=> (b.fav?1:0) - (a.fav?1:0));
     if(plannedId){
       const idx = sorted.findIndex(t=>t.id===plannedId);
@@ -2429,9 +2489,14 @@ function renderToday(){
     if(plannedTpl){
       inner += `<div class="today-plan-note">${planIconSmall(13)} На ${dateLabel} запланировано: <b>${escHtml(plannedTpl.name)}</b></div>`;
     }
-    inner += `<div class="set-chips">` +
-      sorted.map(t => `<div class="set-chip ${t.id===selectedTemplateId?'active':''} ${t.id===plannedId?'planned':''}" onclick="selectTemplate('${t.id}')">${t.id===plannedId?`<span class="plan-tag">${planIconSmall(11)}</span>`:(t.fav?'★ ':'')}${escHtml(t.name)}<small>${t.exercises.length} упр.</small></div>`).join("") +
-      `</div>`;
+    const filtered = searchTerm ? sorted.filter(t=> t.name.toLowerCase().includes(searchTerm)) : sorted;
+    if(filtered.length === 0){
+      inner += `<div class="empty-hint">Ничего не найдено по «${escHtml(searchTerm)}».</div>`;
+    } else {
+      inner += `<div class="set-chips">` +
+        filtered.map(t => `<div class="set-chip ${t.id===selectedTemplateId?'active':''} ${t.id===plannedId?'planned':''}" onclick="selectTemplate('${t.id}')">${t.id===plannedId?`<span class="plan-tag">${planIconSmall(11)}</span>`:(t.fav?'★ ':'')}${escHtml(t.name)}<small>${t.exercises.length} упр.</small></div>`).join("") +
+        `</div>`;
+    }
   }
   wrap.innerHTML = `<div class="today-picker-inner">${inner}</div>`;
 
@@ -2583,13 +2648,22 @@ function renderPlansScreen(){
       ${selTplId ? `<span class="edit-link danger-ish" onclick="clearSelectedDayPlan()">Очистить</span>` : ""}
     </div>`;
 
+  const searchField = document.getElementById("planTplSearchField");
   if(templates.length === 0){
+    searchField.style.display = "none";
     html += `<div class="empty-hint" style="margin-top:14px; padding:26px 16px;"><div class="big">＋</div>Пока нет ни одного набора.<br><span class="link-btn" onclick="switchView('builder')">Создать первую тренировку →</span></div>`;
   } else {
+    searchField.style.display = "";
+    const searchTerm = document.getElementById("planTplSearchInput").value.trim().toLowerCase();
     const sorted = templates.slice().sort((a,b)=> (b.fav?1:0) - (a.fav?1:0));
-    html += `<div class="set-chips">` +
-      sorted.map(t=>`<div class="set-chip ${selTplId===t.id?'active':''}" onclick="assignPlanToSelectedDay('${t.id}')">${t.fav?'★ ':''}${escHtml(t.name)}<small>${t.exercises.length} упр.</small></div>`).join("") +
-      `</div>`;
+    const filtered = searchTerm ? sorted.filter(t=> t.name.toLowerCase().includes(searchTerm)) : sorted;
+    if(filtered.length === 0){
+      html += `<div class="empty-hint" style="margin-top:14px;">Ничего не найдено по «${escHtml(searchTerm)}».</div>`;
+    } else {
+      html += `<div class="set-chips">` +
+        filtered.map(t=>`<div class="set-chip ${selTplId===t.id?'active':''}" onclick="assignPlanToSelectedDay('${t.id}')">${t.fav?'★ ':''}${escHtml(t.name)}<small>${t.exercises.length} упр.</small></div>`).join("") +
+        `</div>`;
+    }
   }
   html += `</div>`;
 
@@ -3455,6 +3529,8 @@ const debouncedRenderHistory = debounce(()=>renderHistory(), 150);
 const debouncedRenderLibraryList = debounce(()=>renderLibraryList(), 150);
 const debouncedRenderSessionExPickerList = debounce(()=>renderSessionExPickerList(), 150);
 const debouncedRenderPickerPanel = debounce(()=>renderPickerPanel(), 150);
+const debouncedRenderToday = debounce(()=>renderToday(), 150);
+const debouncedRenderPlansScreen = debounce(()=>renderPlansScreen(), 150);
 
 function restoreDraftIntoDOM(){
   const tpl = templates.find(t=>t.id===selectedTemplateId);
@@ -4809,6 +4885,8 @@ function resetLibForm(){
   document.getElementById("libFormTitle").textContent = "Добавить упражнение";
   document.getElementById("libSaveBtn").textContent = "+ Добавить";
   document.getElementById("libCancelBtn").style.display = "none";
+  document.getElementById("libDeleteBtn").style.display = "none";
+  document.getElementById("libVideoWatchLink").style.display = "none";
   toggleLibAddBox(false);
 }
 function renderLibraryScreen(){
@@ -4831,9 +4909,7 @@ function renderLibraryList(){
         <button type="button" class="fav-star ${it.fav?'active':''}" style="width:24px;height:24px;" onclick="toggleLibraryFavorite('${escJsAttr(it.id)}')" title="В избранное">${starSvgInline(16)}</button>
         <span class="n">${escHtml(it.name)}</span>
         <div class="actions">
-          ${safeUrl(it.video) ? `<a class="ed" href="${escHtml(safeUrl(it.video))}" target="_blank" rel="noopener" title="Смотреть технику">${playIcon(16)}</a>` : ''}
-          <button class="ed" onclick="startEditLibraryItem('${escJsAttr(it.id)}')">${pencilIcon(15)}</button>
-          <button class="del" onclick="deleteLibraryItem('${escJsAttr(it.id)}')">${trashIcon(15)}</button>
+          <button class="ed" onclick="startEditLibraryItem('${escJsAttr(it.id)}')" title="Открыть упражнение" aria-label="Открыть упражнение">${pencilIcon(15)}</button>
         </div>
       </div>`).join("");
   });
@@ -4857,8 +4933,16 @@ function startEditLibraryItem(id){
   document.getElementById("libFormTitle").textContent = "Изменить упражнение";
   document.getElementById("libSaveBtn").textContent = "Сохранить";
   document.getElementById("libCancelBtn").style.display = "block";
+  document.getElementById("libDeleteBtn").style.display = "block";
+  updateLibVideoWatchLink();
   toggleLibAddBox(true);
   scrollWithinScreen(0, "smooth");
+}
+function updateLibVideoWatchLink(){
+  const link = document.getElementById("libVideoWatchLink");
+  const url = safeUrl(document.getElementById("libVideoInput").value.trim());
+  if(url){ link.href = url; link.style.display = "inline-block"; }
+  else { link.style.display = "none"; }
 }
 function cancelLibraryEdit(){ resetLibForm(); }
 function saveLibraryItem(){
@@ -4887,6 +4971,7 @@ function deleteLibraryItem(id){
   confirmAction("Удалить это упражнение из справочника?", ()=>{
     library = library.filter(x=>x.id!==id);
     saveLibrary(library);
+    resetLibForm();
     renderLibraryList();
     showToast("Удалено");
   });
@@ -5153,6 +5238,7 @@ async function bootApp(){
     const res = await fetch("/api/auth/me", { credentials: "same-origin" });
     if(res.ok){ await enterApp(); return; }
   }catch(e){ /* сервер недоступен — покажем форму входа, она же сообщит об ошибке при попытке войти */ }
+  document.getElementById("bootLoading").style.display = "none";
   document.getElementById("authGate").style.display = "flex";
 })();
 </script>
