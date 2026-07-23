@@ -3,7 +3,7 @@ const express = require("express");
 const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
 const db = require("./db");
-const { register, login, logout, requireAuth, me } = require("./auth");
+const { register, login, logout, requireAuth, me, changeUsername, changePassword } = require("./auth");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -23,6 +23,8 @@ app.post("/api/auth/register", authLimiter, register);
 app.post("/api/auth/login", authLimiter, login);
 app.post("/api/auth/logout", logout);
 app.get("/api/auth/me", requireAuth, me);
+app.post("/api/auth/change-username", authLimiter, requireAuth, changeUsername);
+app.post("/api/auth/change-password", authLimiter, requireAuth, changePassword);
 
 const selectAllForUser = db.prepare("SELECT key, value FROM user_data WHERE user_id = ?");
 const upsertData = db.prepare(`

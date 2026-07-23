@@ -15,6 +15,10 @@ const insertUser = db.prepare(
 );
 const findUserByUsername = db.prepare("SELECT * FROM users WHERE username = ?");
 const findUserById = db.prepare("SELECT id, username FROM users WHERE id = ?");
+const findUserByIdFull = db.prepare("SELECT * FROM users WHERE id = ?");
+const updateUsername = db.prepare("UPDATE users SET username = ? WHERE id = ?");
+const updatePasswordHash = db.prepare("UPDATE users SET password_hash = ? WHERE id = ?");
+const deleteOtherSessions = db.prepare("DELETE FROM auth_sessions WHERE user_id = ? AND token != ?");
 const insertSession = db.prepare(
   "INSERT INTO auth_sessions (token, user_id, expires_at) VALUES (?, ?, ?)"
 );
@@ -113,9 +117,46 @@ function me(req, res) {
   res.json({ username: req.user.username });
 }
 
+function changeUsername(req, res) {
+  const { newUsername, password } = req.body || {};
+  const user = findUserByIdFull.get(req.user.id);
+  if (!user || !bcrypt.compareSync(String(password || ""), user.password_hash)) {
+    return res.status(401).json({ error: "Неверный пароль" });
+  }
+  if (!isValidUsername(newUsername)) {
+    return res.status(400).json({ error: "Логин: 3-32 символа, латиница/цифры/._-" });
+  }
+  if (newUsername === user.username) {
+    return res.status(400).json({ error: "Это и есть текущий логин" });
+  }
+  if (findUserByUsername.get(newUsername)) {
+    return res.status(409).json({ error: "Такой логин уже занят" });
+  }
+  updateUsername.run(newUsername, user.id);
+  res.json({ username: newUsername });
+}
+
+function changePassword(req, res) {
+  const { currentPassword, newPassword } = req.body || {};
+  const user = findUserByIdFull.get(req.user.id);
+  if (!user || !bcrypt.compareSync(String(currentPassword || ""), user.password_hash)) {
+    return res.status(401).json({ error: "Неверный текущий пароль" });
+  }
+  if (typeof newPassword !== "string" || newPassword.length < 8) {
+    return res.status(400).json({ error: "Новый пароль должен быть не короче 8 символов" });
+  }
+  const hash = bcrypt.hashSync(newPassword, 12);
+  updatePasswordHash.run(hash, user.id);
+  /* разлогиниваем остальные сессии этого юзера (другие устройства/браузеры) —
+     текущую (по которой сейчас пришёл запрос) оставляем активной */
+  const currentToken = req.cookies && req.cookies[SESSION_COOKIE];
+  deleteOtherSessions.run(user.id, currentToken || "");
+  res.json({ ok: true });
+}
+
 /* раз в час подчищаем протухшие сессии, чтобы таблица не росла бесконечно */
 setInterval(() => {
   try { deleteExpiredSessions.run(); } catch (e) { /* noop */ }
 }, 60 * 60 * 1000).unref();
 
-module.exports = { register, login, logout, requireAuth, me };
+module.exports = { register, login, logout, requireAuth, me, changeUsername, changePassword };

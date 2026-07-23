@@ -58,39 +58,48 @@
   }
   ::selection{ background: var(--accent-glow); }
 
-  html[data-theme="amber"]{
+  /* акцентный цвет — независим от светлого/тёмного режима (см. data-mode ниже) */
+  html[data-accent="amber"]{
     --accent: #E8B650;
     --accent-dim: #9C7A34;
     --accent-glow: rgba(232,182,80,0.16);
     --accent-glow-strong: rgba(232,182,80,0.27);
   }
-  html[data-theme="rose"]{
+  html[data-accent="rose"]{
     --accent: #E38080;
     --accent-dim: #9A5555;
     --accent-glow: rgba(227,128,128,0.15);
     --accent-glow-strong: rgba(227,128,128,0.26);
   }
-  html[data-theme="sage"]{
+  html[data-accent="sage"]{
     --accent: #8FC499;
     --accent-dim: #5C8465;
     --accent-glow: rgba(143,196,153,0.15);
     --accent-glow-strong: rgba(143,196,153,0.26);
   }
-  html[data-theme="teal"]{
+  html[data-accent="teal"]{
     --accent: #55BDB2;
     --accent-dim: #367A72;
     --accent-glow: rgba(85,189,178,0.15);
     --accent-glow-strong: rgba(85,189,178,0.26);
   }
-  html[data-theme="dusk"]{
+  html[data-accent="dusk"]{
     --accent: #97A9E0;
     --accent-dim: #5D6C97;
     --accent-glow: rgba(151,169,224,0.15);
     --accent-glow-strong: rgba(151,169,224,0.26);
   }
-  /* единственная светлая тема — песочная, а не просто другой акцент: переопределяет
-     всю базовую палитру (фон/поверхности/текст), а не только --accent */
-  html[data-theme="sand"]{
+  html[data-accent="olive"]{
+    --accent: #A9AC5E;
+    --accent-dim: #74753E;
+    --accent-glow: rgba(169,172,94,0.15);
+    --accent-glow-strong: rgba(169,172,94,0.26);
+  }
+
+  /* светлый режим — своя база (фон/поверхности/текст), не зависит от выбранного акцента.
+     Акценты выше рассчитаны на тёмный фон и слишком яркие/светлые для белого — поэтому
+     каждый акцент ниже продублирован в затемнённом варианте специально для light-режима. */
+  html[data-mode="light"]{
     --bg: #E8DFC8;
     --surface: #F6F0E0;
     --surface-2: #EEE4CC;
@@ -99,16 +108,22 @@
     --text: #362B1C;
     --text-dim: #6B5A3E;
     --text-faint: #9A896A;
-    --accent: #74753E;
-    --accent-dim: #52532B;
-    --accent-glow: rgba(116,117,62,0.16);
-    --accent-glow-strong: rgba(116,117,62,0.28);
+    --accent: #9B6640;
+    --accent-dim: #6E4A2E;
+    --accent-glow: rgba(155,102,64,0.16);
+    --accent-glow-strong: rgba(155,102,64,0.28);
     --danger: #A14C3F;
     --warmup: #3E647C;
     --nav-fade-rgb: 232,223,200;
     --native-color-scheme: light;
     --date-icon-filter: none;
   }
+  html[data-mode="light"][data-accent="amber"]{ --accent: #9C7A34; --accent-dim: #6E5824; --accent-glow: rgba(156,122,52,0.18); --accent-glow-strong: rgba(156,122,52,0.3); }
+  html[data-mode="light"][data-accent="rose"]{ --accent: #9A5555; --accent-dim: #6E3D3D; --accent-glow: rgba(154,85,85,0.18); --accent-glow-strong: rgba(154,85,85,0.3); }
+  html[data-mode="light"][data-accent="sage"]{ --accent: #5C8465; --accent-dim: #3F5C46; --accent-glow: rgba(92,132,101,0.18); --accent-glow-strong: rgba(92,132,101,0.3); }
+  html[data-mode="light"][data-accent="teal"]{ --accent: #367A72; --accent-dim: #25554F; --accent-glow: rgba(54,122,114,0.18); --accent-glow-strong: rgba(54,122,114,0.3); }
+  html[data-mode="light"][data-accent="dusk"]{ --accent: #5D6C97; --accent-dim: #414B6B; --accent-glow: rgba(93,108,151,0.18); --accent-glow-strong: rgba(93,108,151,0.3); }
+  html[data-mode="light"][data-accent="olive"]{ --accent: #74753E; --accent-dim: #52532B; --accent-glow: rgba(116,117,62,0.18); --accent-glow-strong: rgba(116,117,62,0.3); }
 
   html{ scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
   *::-webkit-scrollbar{ width: 7px; height: 7px; }
@@ -535,7 +550,7 @@
 
   .field{ margin-bottom: 12px; }
   .field label{ display:block; font-size: 12px; color: var(--text-faint); margin-bottom: 5px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing:0.04em; }
-  .field input[type=text], .field input[type=number]{ width:100%; min-height: 44px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: var(--radius); }
+  .field input[type=text], .field input[type=number], .field input[type=password]{ width:100%; min-height: 44px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: var(--radius); }
   .field-row{ display:flex; gap:8px; }
   .field-row .field{ flex:1; }
   .computed-hint{ font-family: var(--font-mono); font-size: 11.5px; color: var(--accent); margin-top: 6px; min-height: 14px; }
@@ -1025,14 +1040,6 @@
   .auth-submit:active{ opacity:0.85; }
   .auth-submit:disabled{ opacity:0.6; cursor:default; }
 </style>
-<script>
-(function(){
-  try{
-    var t = localStorage.getItem("dnevnikAppTheme");
-    if(t && t !== "terracotta") document.documentElement.setAttribute("data-theme", t);
-  }catch(e){}
-})();
-</script>
 </head>
 <body>
 
@@ -1239,10 +1246,17 @@
 
   <div class="prof-card" id="profCard-theme">
     <div class="prof-card-head" onclick="toggleProfCard('theme')">
-      <div><div class="prof-card-title">Оформление</div><div class="prof-card-sub">Акцентный цвет приложения</div></div>
+      <div><div class="prof-card-title">Оформление</div><div class="prof-card-sub">Тема и акцентный цвет</div></div>
       <span class="side"><span class="chevron">❯</span></span>
     </div>
     <div class="prof-card-body"><div class="prof-card-inner">
+      <div class="field" style="margin-bottom:14px;">
+        <label>Режим</label>
+        <div class="chip-select" id="modeChips">
+          <div class="chip-opt" data-mode="dark">Тёмная</div>
+          <div class="chip-opt" data-mode="light">Светлая</div>
+        </div>
+      </div>
       <div class="theme-swatches" id="themeSwatches">
     <div class="theme-swatch" data-theme="terracotta" style="--sw:#E2925C;">
       <svg class="swatch-check" viewBox="0 0 24 24"><polyline points="5 12.5 9.5 17 19 6.5"/></svg>
@@ -1262,8 +1276,8 @@
     <div class="theme-swatch" data-theme="dusk" style="--sw:#97A9E0;">
       <svg class="swatch-check" viewBox="0 0 24 24"><polyline points="5 12.5 9.5 17 19 6.5"/></svg>
     </div>
-    <div class="theme-swatch" data-theme="sand" style="--sw:#E8DFC8;">
-      <svg class="swatch-check" viewBox="0 0 24 24" style="stroke:#362B1C;"><polyline points="5 12.5 9.5 17 19 6.5"/></svg>
+    <div class="theme-swatch" data-theme="olive" style="--sw:#A9AC5E;">
+      <svg class="swatch-check" viewBox="0 0 24 24"><polyline points="5 12.5 9.5 17 19 6.5"/></svg>
     </div>
       </div>
       <div class="field" style="margin-top:16px; margin-bottom:2px;">
@@ -1273,6 +1287,36 @@
           <div class="chip-opt" data-unit="lb">фунты (lb)</div>
         </div>
       </div>
+    </div></div>
+  </div>
+
+  <div class="prof-card" id="profCard-account">
+    <div class="prof-card-head" onclick="toggleProfCard('account')">
+      <div><div class="prof-card-title">Аккаунт</div><div class="prof-card-sub">Логин и пароль — <span id="accountUsernameLabel"></span></div></div>
+      <span class="side"><span class="chevron">❯</span></span>
+    </div>
+    <div class="prof-card-body"><div class="prof-card-inner">
+      <div class="field">
+        <label>Новый логин</label>
+        <input type="text" id="accountNewUsername" autocomplete="username" placeholder="Новый логин">
+      </div>
+      <div class="field">
+        <label>Пароль (подтверди изменение)</label>
+        <input type="password" id="accountUsernamePassword" autocomplete="current-password" placeholder="Текущий пароль">
+      </div>
+      <button class="btn-secondary" style="margin-top:2px;" onclick="submitChangeUsername()">Сменить логин</button>
+
+      <div style="height:1px; background:var(--border-soft); margin:20px 0 16px;"></div>
+
+      <div class="field">
+        <label>Текущий пароль</label>
+        <input type="password" id="accountCurrentPassword" autocomplete="current-password" placeholder="Текущий пароль">
+      </div>
+      <div class="field">
+        <label>Новый пароль</label>
+        <input type="password" id="accountNewPassword" autocomplete="new-password" placeholder="Не короче 8 символов">
+      </div>
+      <button class="btn-secondary" style="margin-top:2px;" onclick="submitChangePassword()">Сменить пароль</button>
     </div></div>
   </div>
 
@@ -1547,6 +1591,7 @@
    низу файла). После входа вызывается enterApp() — она прячет форму, тянет данные
    пользователя с сервера и показывает #appRoot. */
 let authMode = "login";
+let currentUsername = null;
 function setAuthMode(mode){
   authMode = mode;
   document.getElementById("authTabLogin").classList.toggle("active", mode==="login");
@@ -1576,11 +1621,52 @@ async function submitAuthForm(e){
     });
     const data = await res.json().catch(()=>({}));
     if(!res.ok){ showAuthError(data.error || "Не удалось выполнить запрос"); return; }
+    currentUsername = data.username;
     await enterApp();
   }catch(err){
     showAuthError("Нет соединения с сервером");
   }finally{
     btn.disabled = false;
+  }
+}
+async function submitChangeUsername(){
+  const newUsername = document.getElementById("accountNewUsername").value.trim();
+  const password = document.getElementById("accountUsernamePassword").value;
+  if(!newUsername){ showToast("Введи новый логин"); return; }
+  if(!password){ showToast("Введи текущий пароль для подтверждения"); return; }
+  try{
+    const res = await fetch("/api/auth/change-username", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      credentials: "same-origin", body: JSON.stringify({ newUsername, password })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ showToast(data.error || "Не удалось сменить логин"); return; }
+    currentUsername = data.username;
+    document.getElementById("accountUsernameLabel").textContent = currentUsername;
+    document.getElementById("accountNewUsername").value = "";
+    document.getElementById("accountUsernamePassword").value = "";
+    showToast("Логин изменён");
+  }catch(err){
+    showToast("Нет соединения с сервером");
+  }
+}
+async function submitChangePassword(){
+  const currentPassword = document.getElementById("accountCurrentPassword").value;
+  const newPassword = document.getElementById("accountNewPassword").value;
+  if(!currentPassword){ showToast("Введи текущий пароль"); return; }
+  if(!newPassword || newPassword.length < 8){ showToast("Новый пароль должен быть не короче 8 символов"); return; }
+  try{
+    const res = await fetch("/api/auth/change-password", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      credentials: "same-origin", body: JSON.stringify({ currentPassword, newPassword })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){ showToast(data.error || "Не удалось сменить пароль"); return; }
+    document.getElementById("accountCurrentPassword").value = "";
+    document.getElementById("accountNewPassword").value = "";
+    showToast("Пароль изменён — другие устройства разлогинены");
+  }catch(err){
+    showToast("Нет соединения с сервером");
   }
 }
 async function enterApp(){
@@ -5001,23 +5087,42 @@ document.getElementById("weightUnitChips").addEventListener("click", e=>{
   showToast("Единицы веса изменены — значения пересчитаны");
 });
 
-/* ============ Accent color theme ============ */
-const THEME_KEY = "dnevnikAppTheme";
-function applyTheme(theme, persist){
+/* ============ Оформление: акцентный цвет + светлый/тёмный режим ============
+   Это две независимые настройки — любой акцент работает и в тёмном, и в светлом
+   режиме (см. html[data-accent=...] и html[data-mode="light"][data-accent=...] в CSS). */
+const THEME_KEY = "dnevnikAppTheme"; // акцент
+const MODE_KEY = "dnevnikAppMode";   // режим: "dark" (по умолчанию) | "light"
+function applyAccent(accent, persist){
   const root = document.documentElement;
-  if(!theme || theme === "terracotta") root.removeAttribute("data-theme");
-  else root.setAttribute("data-theme", theme);
-  document.querySelectorAll(".theme-swatch").forEach(s => s.classList.toggle("active", s.dataset.theme === (theme || "terracotta")));
+  if(!accent || accent === "terracotta") root.removeAttribute("data-accent");
+  else root.setAttribute("data-accent", accent);
+  document.querySelectorAll(".theme-swatch").forEach(s => s.classList.toggle("active", s.dataset.theme === (accent || "terracotta")));
   moveTabIndicator();
   if(persist){
-    try{ localStorage.setItem(THEME_KEY, theme || "terracotta"); }catch(e){}
+    try{ localStorage.setItem(THEME_KEY, accent || "terracotta"); }catch(e){}
+  }
+}
+function applyMode(mode, persist){
+  const root = document.documentElement;
+  if(!mode || mode === "dark") root.removeAttribute("data-mode");
+  else root.setAttribute("data-mode", mode);
+  document.querySelectorAll("#modeChips .chip-opt").forEach(c=>c.classList.toggle("active", c.dataset.mode === (mode || "dark")));
+  moveTabIndicator();
+  if(persist){
+    try{ localStorage.setItem(MODE_KEY, mode || "dark"); }catch(e){}
   }
 }
 document.getElementById("themeSwatches").addEventListener("click", e=>{
   const sw = e.target.closest(".theme-swatch");
   if(!sw) return;
-  applyTheme(sw.dataset.theme, true);
+  applyAccent(sw.dataset.theme, true);
   showToast("Акцентный цвет изменён");
+});
+document.getElementById("modeChips").addEventListener("click", e=>{
+  const chip = e.target.closest(".chip-opt");
+  if(!chip) return;
+  applyMode(chip.dataset.mode, true);
+  showToast("Тема изменена");
 });
 function calcAgeFromBirthDate(dateStr){
   if(!dateStr) return null;
@@ -5226,7 +5331,13 @@ async function bootApp(){
   templates = loadTemplates();
   document.getElementById("sessionDate").value = new Date().toISOString().slice(0,10);
   renderToday();
-  applyTheme(document.documentElement.getAttribute("data-theme"), false);
+  document.getElementById("accountUsernameLabel").textContent = currentUsername || "";
+  let savedAccent = null, savedMode = null;
+  try{ savedAccent = localStorage.getItem(THEME_KEY); }catch(e){}
+  try{ savedMode = localStorage.getItem(MODE_KEY); }catch(e){}
+  if(savedAccent === "sand"){ savedMode = savedMode || "light"; savedAccent = "olive"; } /* миграция со старой версии, где "sand" был отдельной темой */
+  applyAccent(savedAccent, false);
+  applyMode(savedMode, false);
   moveTabIndicator();
 }
 
@@ -5236,7 +5347,12 @@ async function bootApp(){
 (async function start(){
   try{
     const res = await fetch("/api/auth/me", { credentials: "same-origin" });
-    if(res.ok){ await enterApp(); return; }
+    if(res.ok){
+      const data = await res.json().catch(()=>({}));
+      currentUsername = data.username;
+      await enterApp();
+      return;
+    }
   }catch(e){ /* сервер недоступен — покажем форму входа, она же сообщит об ошибке при попытке войти */ }
   document.getElementById("bootLoading").style.display = "none";
   document.getElementById("authGate").style.display = "flex";
