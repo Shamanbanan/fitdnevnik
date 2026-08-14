@@ -1707,6 +1707,7 @@ async function submitAuthForm(e){
     const data = await res.json().catch(()=>({}));
     if(!res.ok){ showAuthError(data.error || "Не удалось выполнить запрос"); return; }
     currentUsername = data.username;
+    try{ window.localStorage.setItem("dnevnik:lastUsername", currentUsername || ""); }catch(e2){}
     await enterApp();
   }catch(err){
     showAuthError("Нет соединения с сервером");
@@ -1755,14 +1756,30 @@ async function submitChangePassword(){
   }
 }
 async function enterApp(){
-  const res = await fetch("/api/bootstrap", { credentials: "same-origin" });
-  if(!res.ok){
+  let res = null;
+  try{
+    res = await fetch("/api/bootstrap", { credentials: "same-origin" });
+  }catch(e){ /* нет сети — обработаем ниже через локальный кэш */ }
+
+  if(res && res.ok){
+    localStorage._hydrate(await res.json());
+  }else if(res && (res.status === 401 || res.status === 403)){
     document.getElementById("bootLoading").style.display = "none";
     document.getElementById("authGate").style.display = "flex";
     showAuthError("Сессия не подтверждена, попробуй войти ещё раз");
     return;
+  }else if(localStorage._hasLocalCache()){
+    /* сервер недоступен (нет интернета в зале), но на этом устройстве уже есть
+       данные с прошлого раза — открываем офлайн вместо блокировки логином,
+       чтобы можно было продолжать записывать тренировку */
+    localStorage._hydrateFromLocalCache();
+    if(typeof showToast === "function") showToast("Нет интернета — открыли последнюю сохранённую версию");
+  }else{
+    document.getElementById("bootLoading").style.display = "none";
+    document.getElementById("authGate").style.display = "flex";
+    showAuthError("Нет соединения с сервером — попробуй войти, когда появится интернет");
+    return;
   }
-  localStorage._hydrate(await res.json());
   document.getElementById("bootLoading").style.display = "none";
   document.getElementById("authGate").style.display = "none";
   document.getElementById("appRoot").style.display = "block";
@@ -1775,25 +1792,114 @@ async function enterApp(){
    в этом файле (включая инлайновые onclick="..." — они выполняются в той же глобальной
    цепочке областей видимости). Поэтому все существующие вызовы localStorage.getItem/
    setItem по всему файлу продолжают работать без изменений — теперь они молча ходят
-   через кэш в памяти + фоновую синхронизацию с сервером вместо браузерного хранилища. */
+   через кэш в памяти + фоновую синхронизацию с сервером вместо браузерного хранилища.
+
+   ВАЖНО (офлайн-режим): раньше кэш жил только в памяти вкладки. Если PUT на сервер
+   не проходил (нет интернета в зале) и вкладка потом перезагружалась/выгружалась
+   (телефон заблокировался, браузер убил фоновую вкладку) — несинхронизированные
+   записи терялись безвозвратно, хотя пользователь видел их сохранёнными в приложении.
+   Теперь при каждом setItem значение сразу пишется в настоящий window.localStorage
+   (это синхронно и не зависит от сети), а ключи, которые не удалось отправить на
+   сервер, помечаются как "ожидающие синхронизации" и достаются из браузерного
+   хранилища при следующей гидратации — так их не затирает более старый снимок с
+   сервера. Повторная отправка идёт по событию 'online' и по таймеру (событие online
+   не всегда надёжно, особенно в мобильных браузерах). */
 function createRemoteStorageShim(){
   const cache = {};
   const debouncedPuts = {};
+  const CACHE_PREFIX = "dnevnik:cache:";
+  const PENDING_KEY = "dnevnik:pendingSync";
+
+  function loadPending(){
+    try{ return JSON.parse(window.localStorage.getItem(PENDING_KEY)) || {}; }catch(e){ return {}; }
+  }
+  function savePending(pending){
+    try{ window.localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); }catch(e){}
+  }
+  function markPending(key){
+    const pending = loadPending();
+    if(!pending[key]){ pending[key] = true; savePending(pending); }
+  }
+  function clearPending(key){
+    const pending = loadPending();
+    if(pending[key]){ delete pending[key]; savePending(pending); }
+  }
+  function persistLocal(key, value){
+    try{ window.localStorage.setItem(CACHE_PREFIX + key, value); }catch(e){ /* локальное хранилище недоступно/переполнено — синхронно с сервером всё равно попробуем */ }
+  }
+
+  function sendToServer(key){
+    return fetch("/api/data/" + encodeURIComponent(key), {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      credentials: "same-origin", body: JSON.stringify({ value: cache[key] })
+    }).then(res=>{
+      if(!res.ok) throw new Error("save failed");
+      clearPending(key);
+    }).catch(()=>{
+      markPending(key);
+      if(typeof showToast === "function") showToast("Нет соединения — сохранено на устройстве, отправим на сервер позже");
+    });
+  }
+
   function putRemote(key){
-    if(!debouncedPuts[key]) debouncedPuts[key] = debounce((k)=>{
-      fetch("/api/data/" + encodeURIComponent(k), {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        credentials: "same-origin", body: JSON.stringify({ value: cache[k] })
-      }).then(res=>{ if(!res.ok) throw new Error("save failed"); })
-        .catch(()=>{ if(typeof showToast === "function") showToast("Не удалось сохранить на сервере — проверь соединение"); });
-    }, 500);
+    if(!debouncedPuts[key]) debouncedPuts[key] = debounce((k)=>{ sendToServer(k); }, 500);
     debouncedPuts[key](key);
   }
+
+  function retryPending(){
+    const pending = loadPending();
+    Object.keys(pending).forEach(k=>{
+      if(Object.prototype.hasOwnProperty.call(cache, k)) sendToServer(k);
+    });
+  }
+  try{
+    window.addEventListener("online", retryPending);
+    setInterval(retryPending, 15000);
+  }catch(e){}
+
   return {
-    _hydrate(data){ Object.assign(cache, data || {}); },
+    _hydrate(data){
+      Object.assign(cache, data || {});
+      /* локальные несинхронизированные значения новее серверного снимка — не даём
+         серверу (который их ещё не видел) затереть то, что записано на этом устройстве */
+      const pending = loadPending();
+      Object.keys(pending).forEach(k=>{
+        const local = window.localStorage.getItem(CACHE_PREFIX + k);
+        if(local !== null) cache[k] = local;
+      });
+      if(Object.keys(pending).length) retryPending();
+    },
+    /* есть ли вообще локальный кэш с прошлого успешного входа (для офлайн-открытия) */
+    _hasLocalCache(){
+      try{
+        for(let i=0;i<window.localStorage.length;i++){
+          if(window.localStorage.key(i).indexOf(CACHE_PREFIX) === 0) return true;
+        }
+      }catch(e){}
+      return false;
+    },
+    /* открыть приложение по тому, что уже лежит в браузере, без ответа сервера —
+       используется, когда /api/bootstrap недоступен (нет сети в зале) */
+    _hydrateFromLocalCache(){
+      try{
+        for(let i=0;i<window.localStorage.length;i++){
+          const k = window.localStorage.key(i);
+          if(k.indexOf(CACHE_PREFIX) === 0) cache[k.slice(CACHE_PREFIX.length)] = window.localStorage.getItem(k);
+        }
+      }catch(e){}
+    },
     getItem(key){ return Object.prototype.hasOwnProperty.call(cache, key) ? cache[key] : null; },
-    setItem(key, value){ cache[key] = String(value); putRemote(key); },
-    removeItem(key){ delete cache[key]; }
+    setItem(key, value){
+      value = String(value);
+      cache[key] = value;
+      persistLocal(key, value);
+      putRemote(key);
+    },
+    removeItem(key){
+      delete cache[key];
+      try{ window.localStorage.removeItem(CACHE_PREFIX + key); }catch(e){}
+      clearPending(key);
+    }
   };
 }
 const localStorage = createRemoteStorageShim();
@@ -5538,10 +5644,24 @@ async function bootApp(){
     if(res.ok){
       const data = await res.json().catch(()=>({}));
       currentUsername = data.username;
+      try{ window.localStorage.setItem("dnevnik:lastUsername", currentUsername || ""); }catch(e){}
       await enterApp();
       return;
     }
-  }catch(e){ /* сервер недоступен — покажем форму входа, она же сообщит об ошибке при попытке войти */ }
+  }catch(e){
+    /* сервер недоступен (нет интернета в зале). Если раньше на этом устройстве уже
+       был успешный вход и остался локальный кэш — всё равно открываем приложение
+       офлайн, вместо того чтобы упереться в форму логина, которая тоже не сработает
+       без сети. Новые записи сохранятся на устройстве и уйдут на сервер сами,
+       когда связь вернётся. */
+    if(localStorage._hasLocalCache()){
+      try{ currentUsername = window.localStorage.getItem("dnevnik:lastUsername") || null; }catch(e2){}
+      try{
+        await enterApp();
+        return;
+      }catch(e3){ /* не удалось открыть офлайн — покажем форму входа ниже */ }
+    }
+  }
   document.getElementById("bootLoading").style.display = "none";
   document.getElementById("authGate").style.display = "flex";
 })();
