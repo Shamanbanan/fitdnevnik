@@ -2458,49 +2458,68 @@ function saveProfile(p){ safeSetItem(PROFILE_KEY, JSON.stringify(p)); }
 const UNIT_KEY = "dnevnik_weight_unit_v1";
 function loadWeightUnit(){ try{ return localStorage.getItem(UNIT_KEY) === "lb" ? "lb" : "kg"; }catch(e){ return "kg"; } }
 function saveWeightUnit(u){ try{ localStorage.setItem(UNIT_KEY, u === "lb" ? "lb" : "kg"); }catch(e){} }
-function weightUnitLabel(){ return loadWeightUnit() === "lb" ? "lb" : "кг"; }
+function weightUnitLabel(unit = loadWeightUnit()){ return unit === "lb" ? "lb" : "кг"; }
+function exerciseWeightUnit(ex){ return ex && (ex.weightUnit === "kg" || ex.weightUnit === "lb") ? ex.weightUnit : loadWeightUnit(); }
+function cardWeightUnit(card){ return card && card.dataset.weightUnit || loadWeightUnit(); }
 const KG_PER_LB = 0.45359237;
 function roundWeightNum(n){ return Math.round(n * 10) / 10; }
 /* All weight data is always stored in kg. These convert at the display/input boundary only. */
-function toDisplayWeight(kgVal){
+function toDisplayWeight(kgVal, unit = loadWeightUnit()){
   if(kgVal === "" || kgVal === null || kgVal === undefined) return "";
   const n = parseFloat(String(kgVal).replace(",", "."));
   if(isNaN(n)) return kgVal;
-  return String(loadWeightUnit() === "lb" ? roundWeightNum(n / KG_PER_LB) : roundWeightNum(n));
+  return String(unit === "lb" ? roundWeightNum(n / KG_PER_LB) : roundWeightNum(n));
 }
-function toStorageWeight(displayVal){
+function toStorageWeight(displayVal, unit = loadWeightUnit()){
   if(displayVal === "" || displayVal === null || displayVal === undefined) return "";
   const n = parseFloat(String(displayVal).replace(",", "."));
   if(isNaN(n)) return displayVal;
-  return String(loadWeightUnit() === "lb" ? roundWeightNum(n * KG_PER_LB) : roundWeightNum(n));
+  return String(Number((unit === "lb" ? n * KG_PER_LB : n).toFixed(8)));
+}
+// Keep the exact kg value when displaying a rounded conversion.
+function writeWeightInput(input, kg, unit){
+  input.value = toDisplayWeight(kg, unit);
+  input.dataset.storedKg = String(kg);
+  input.dataset.displayWeight = input.value;
+}
+function readWeightInput(input){
+  if(input.dataset.displayWeight === input.value && input.dataset.storedKg !== undefined) return input.dataset.storedKg;
+  return toStorageWeight(input.value, cardWeightUnit(input.closest(".exercise")));
+}
+function updateCardWeightUnit(card, next){
+  const weights = Array.from(card.querySelectorAll(".weight"), input=>[input, readWeightInput(input)]);
+  card.dataset.weightUnit = next;
+  weights.forEach(([input, kg])=>writeWeightInput(input, kg, next));
+  card.querySelectorAll(".weight").forEach(input=>input.placeholder = weightUnitLabel(next));
+  const label = card.querySelector(".unit-toggle b");
+  if(label) label.textContent = weightUnitLabel(next);
 }
 function applyWeightUnitLabels(){
-  const label = weightUnitLabel();
-  document.querySelectorAll('.set-input.weight, #sessionEditWrap .set-input').forEach(inp=>{
-    if(inp.placeholder === "кг" || inp.placeholder === "lb") inp.placeholder = label;
-  });
-  document.querySelectorAll('.col-labels .unit-toggle b').forEach(el=>{ el.textContent = label; });
   document.querySelectorAll('#weightUnitChips .chip-opt').forEach(c=>c.classList.toggle("active", c.dataset.unit === loadWeightUnit()));
 }
 function setWeightUnit(next){
-  const cur = loadWeightUnit();
-  if(next === cur) return;
-  document.querySelectorAll('#todayLogWrap .set-input.weight, #sessionEditWrap .set-row .set-input:nth-child(2)').forEach(inp=>{
-    const v = inp.value.trim();
-    if(!v) return;
-    const n = parseFloat(v.replace(",", "."));
-    if(isNaN(n)) return;
-    const converted = next === "lb" ? (n / KG_PER_LB) : (n * KG_PER_LB);
-    inp.value = String(roundWeightNum(converted));
+  if(next === loadWeightUnit()) return;
+  const tpl = templates.find(t=>t.id===selectedTemplateId);
+  document.querySelectorAll('#todayLogWrap .exercise').forEach(card=>{
+    const ex = tpl && tpl.exercises[Number(card.dataset.idx)];
+    if(ex && !ex.weightUnit) updateCardWeightUnit(card, next);
   });
   saveWeightUnit(next);
   applyWeightUnitLabels();
   captureDraftFromDOM();
+  if(typeof editSessionData !== "undefined" && editSessionData) renderSessionEdit();
 }
-function toggleWeightUnitQuick(){
-  const next = loadWeightUnit() === "lb" ? "kg" : "lb";
-  setWeightUnit(next);
-  showToast(next === "lb" ? "Единицы веса: фунты (lb) — введённые значения пересчитаны" : "Единицы веса: килограммы (кг) — введённые значения пересчитаны");
+function toggleWeightUnitQuick(button){
+  const card = button.closest(".exercise");
+  const tpl = templates.find(t=>t.id===selectedTemplateId);
+  const ex = tpl && tpl.exercises[Number(card.dataset.idx)];
+  if(!ex) return;
+  const next = cardWeightUnit(card) === "lb" ? "kg" : "lb";
+  updateCardWeightUnit(card, next);
+  ex.weightUnit = next;
+  saveTemplates(templates);
+  captureDraftFromDOM();
+  showToast("Единицы упражнения: " + weightUnitLabel(next));
 }
 
 const DRAFT_KEY = "dnevnik_draft_v1";
@@ -3019,7 +3038,7 @@ function renderTodayLog(){
   tpl.exercises.forEach((ex,i)=>{
     if(ex.cardio){
       html += `
-      <div class="exercise" data-idx="${i}">
+      <div class="exercise" data-idx="${i}" data-weight-unit="${exerciseWeightUnit(ex)}">
         <div class="ex-body" style="display:block; max-height:none; overflow:visible; padding:12px 14px;">
           <div class="ex-head" style="cursor:default; padding:0;" onpointerdown="onExerciseHeadPointerDown(event, this)">
             <span class="ex-num">${i+1}</span>
@@ -3044,7 +3063,7 @@ function renderTodayLog(){
         <div class="punch">${isDropLast?'Д':s+1}</div>
         <div class="stepper">
           <button type="button" class="step-btn minus" onclick="stepSetValue(this,-0.25)" aria-label="Убавить вес">−</button>
-          <input type="text" inputmode="decimal" class="set-input weight" placeholder="${weightUnitLabel()}" pattern="[0-9]*[.,]?[0-9]*">
+          <input type="text" inputmode="decimal" class="set-input weight" placeholder="${weightUnitLabel(exerciseWeightUnit(ex))}" pattern="[0-9]*[.,]?[0-9]*">
           <button type="button" class="step-btn plus" onclick="stepSetValue(this,0.25)" aria-label="Прибавить вес">+</button>
         </div>
         <div class="stepper">
@@ -3057,7 +3076,7 @@ function renderTodayLog(){
       </div>`;
     }
     html += `
-    <div class="exercise" data-idx="${i}">
+    <div class="exercise" data-idx="${i}" data-weight-unit="${exerciseWeightUnit(ex)}">
       <div class="ex-head" onclick="onExHeadClick(this)" onpointerdown="onExerciseHeadPointerDown(event, this)">
         <span class="ex-num">${i+1}</span>
         <div class="ex-name-wrap">
@@ -3079,7 +3098,7 @@ function renderTodayLog(){
       </div>
       <div class="ex-body">
         <div class="ex-body-inner">
-          <div class="col-labels"><span></span><span class="unit-toggle" onclick="toggleWeightUnitQuick()">Вес <b>${weightUnitLabel()}</b></span><span>${ex.time?'Время':'Повторы'}</span><span class="col-done">Готово</span><span></span></div>
+          <div class="col-labels"><span></span><span class="unit-toggle" onclick="toggleWeightUnitQuick(this)" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleWeightUnitQuick(this)}" aria-label="Переключить кг и фунты для этого упражнения">Вес <b>${weightUnitLabel(exerciseWeightUnit(ex))}</b></span><span>${ex.time?'Время':'Повторы'}</span><span class="col-done">Готово</span><span></span></div>
           <div class="sets-list" data-idx="${i}" data-rest="${escHtml(ex.rest||'')}">${setsHtml}</div>
           <div class="set-adjust-row">
             <button type="button" class="set-adjust-btn" onclick="removeTodaySetRow(${i})">− подход</button>
@@ -3262,7 +3281,7 @@ function openExMenu(i){
   const infoEl = document.getElementById("exMenuInfo");
   if(infoEl){
     infoEl.innerHTML = hasPrev
-      ? `<b>${fmtDate(last.date)}:</b> ${last.sets.filter(s=>s.weight||s.reps).map(s=>`${toDisplayWeight(s.weight)||"–"}×${s.reps||"–"}`).join("  ")}`
+      ? `<b>${fmtDate(last.date)}:</b> ${last.sets.filter(s=>s.weight||s.reps).map(s=>`${toDisplayWeight(s.weight, cardWeightUnit(document.querySelector(`#todayLogWrap .exercise[data-idx="${i}"]`)))||"–"}×${s.reps||"–"}`).join("  ")} ${weightUnitLabel(cardWeightUnit(document.querySelector(`#todayLogWrap .exercise[data-idx="${i}"]`)))}`
       : "Первая запись по этому упражнению";
   }
   let itemsHtml = "";
@@ -3491,14 +3510,14 @@ function finalizeExerciseReorder(){
     div.querySelectorAll(".set-row").forEach(row=>{
       const rpeBtn = row.querySelector(".rpe-btn");
       sets.push({
-        weight: toStorageWeight(row.querySelector(".weight").value),
+        weight: readWeightInput(row.querySelector(".weight")),
         reps: row.querySelector(".reps").value,
         done: row.classList.contains("done"),
         rpe: (rpeBtn && rpeBtn.dataset.rpe) ? rpeBtn.dataset.rpe : null
       });
     });
     const noteEl = div.querySelector(".ex-note-input");
-    return { sets, note: noteEl ? noteEl.value : "" };
+    return { sets, weightUnit: cardWeightUnit(div), note: noteEl ? noteEl.value : "" };
   });
 
   tpl.exercises = origIdxs.map(origI => tpl.exercises[origI]);
@@ -3671,7 +3690,7 @@ function fillNextSetFromRow(sourceRow){
   const r = sourceRow.querySelector(".reps").value.trim();
   if(!w && !r){ showToast("Сначала укажи вес или повторы"); return; }
   const wIn = nextRow.querySelector(".weight"), rIn = nextRow.querySelector(".reps");
-  if(w) wIn.value = w;
+  if(w) writeWeightInput(wIn, readWeightInput(sourceRow.querySelector(".weight")), cardWeightUnit(card));
   if(r) rIn.value = r;
   captureDraftFromDOM();
   showToast("Подход заполнен");
@@ -3756,7 +3775,7 @@ function addTodaySetRow(i, silent){
     <div class="punch">${newIdx+1}</div>
     <div class="stepper">
       <button type="button" class="step-btn minus" onclick="stepSetValue(this,-0.25)" aria-label="Убавить вес">−</button>
-      <input type="text" inputmode="decimal" class="set-input weight" placeholder="${weightUnitLabel()}" pattern="[0-9]*[.,]?[0-9]*">
+      <input type="text" inputmode="decimal" class="set-input weight" placeholder="${weightUnitLabel(cardWeightUnit(list.closest(".exercise")))}" pattern="[0-9]*[.,]?[0-9]*">
       <button type="button" class="step-btn plus" onclick="stepSetValue(this,0.25)" aria-label="Прибавить вес">+</button>
     </div>
     <div class="stepper">
@@ -3848,7 +3867,7 @@ function copyPreviousSets(i){
     const prevSet = last.sets[s];
     if(!prevSet) return;
     const wIn = row.querySelector(".weight"), rIn = row.querySelector(".reps");
-    if(!wIn.value && prevSet.weight) wIn.value = toDisplayWeight(prevSet.weight);
+    if(!wIn.value && prevSet.weight) writeWeightInput(wIn, prevSet.weight, cardWeightUnit(card));
     if(!rIn.value && prevSet.reps) rIn.value = prevSet.reps;
   });
   captureDraftFromDOM();
@@ -3872,14 +3891,14 @@ function captureDraftFromDOM(){
     div.querySelectorAll(".set-row").forEach(row=>{
       const rpeBtn = row.querySelector(".rpe-btn");
       sets.push({
-        weight: toStorageWeight(row.querySelector(".weight").value),
+        weight: readWeightInput(row.querySelector(".weight")),
         reps: row.querySelector(".reps").value,
         done: row.classList.contains("done"),
         rpe: (rpeBtn && rpeBtn.dataset.rpe) ? rpeBtn.dataset.rpe : null
       });
     });
     const noteEl = div.querySelector(".ex-note-input");
-    exercises.push({ sets, note: noteEl ? noteEl.value : "" });
+    exercises.push({ sets, weightUnit: cardWeightUnit(div), note: noteEl ? noteEl.value : "" });
   });
   saveDraft(tpl.id, date, { exercises, rating: sessionRating });
 }
@@ -3917,13 +3936,14 @@ function restoreDraftIntoDOM(){
       if(cb) cb.checked = !!dEx.done;
       return;
     }
+    if(dEx.weightUnit === "kg" || dEx.weightUnit === "lb") updateCardWeightUnit(div, dEx.weightUnit);
     let rows = div.querySelectorAll(".set-row");
     const wantCount = (dEx.sets || []).length;
     while(rows.length < wantCount){ addTodaySetRow(i, true); rows = div.querySelectorAll(".set-row"); }
     rows.forEach((row,s)=>{
       const dSet = dEx.sets && dEx.sets[s];
       if(!dSet) return;
-      if(dSet.weight) row.querySelector(".weight").value = toDisplayWeight(dSet.weight);
+      if(dSet.weight) writeWeightInput(row.querySelector(".weight"), dSet.weight, cardWeightUnit(div));
       if(dSet.reps) row.querySelector(".reps").value = dSet.reps;
       if(dSet.done) row.classList.add("done");
       if(dSet.rpe){
@@ -4006,10 +4026,10 @@ function saveSession(){
     const sets = [];
     div.querySelectorAll(".set-row").forEach(row=>{
       const rpeBtn = row.querySelector(".rpe-btn");
-      sets.push({ weight: toStorageWeight(row.querySelector(".weight").value), reps: row.querySelector(".reps").value, rpe: (rpeBtn && rpeBtn.dataset.rpe) ? rpeBtn.dataset.rpe : null });
+      sets.push({ weight: readWeightInput(row.querySelector(".weight")), reps: row.querySelector(".reps").value, rpe: (rpeBtn && rpeBtn.dataset.rpe) ? rpeBtn.dataset.rpe : null });
     });
     const noteEl = div.querySelector(".ex-note-input");
-    exercises.push({ name: def.name, sets, note: noteEl ? noteEl.value.trim() : "" });
+    exercises.push({ name: def.name, sets, weightUnit: cardWeightUnit(div), note: noteEl ? noteEl.value.trim() : "" });
   });
   const hasData = exercises.some(e => e.cardio ? e.done : (e.sets.some(s=>s.weight||s.reps) || e.note));
   if(!hasData){ showToast("Нет данных для сохранения"); return; }
@@ -4361,6 +4381,7 @@ function addExerciseToDraft(){
     saveLibrary(library);
   }
   if(editingDraftIndex !== null){
+    if(!ex.cardio && draftExercises[editingDraftIndex].weightUnit) ex.weightUnit = draftExercises[editingDraftIndex].weightUnit;
     draftExercises[editingDraftIndex] = ex;
     renderAddedExList();
     resetAddForm();
@@ -4535,10 +4556,10 @@ function renderHistory(){
       }
       const filled = (e.sets||[]).filter(x=>x.weight||x.reps);
       if(filled.length===0 && !e.note) return "";
-      const setPills = filled.map(x=>`<span class="tag">${escHtml(toDisplayWeight(x.weight))||"–"}×${escHtml(x.reps)||"–"}</span>`).join("");
+      const setPills = filled.map(x=>`<span class="tag">${escHtml(toDisplayWeight(x.weight, exerciseWeightUnit(e)))||"–"}×${escHtml(x.reps)||"–"}</span>`).join("");
       return `<div class="hist-ex-row">
         <span class="hist-ex-name">${escHtml(e.name)}</span>
-        <div class="hist-ex-sets">${setPills}</div>
+        <div class="hist-ex-sets">${setPills}<span class="tag">${weightUnitLabel(exerciseWeightUnit(e))}</span></div>
         ${e.note ? `<div class="hist-ex-note">${escHtml(e.note)}</div>` : ""}
       </div>`;
     }).filter(Boolean).join("");
@@ -4648,7 +4669,7 @@ function renderSessionEdit(){
         <div class="punch">${sIdx+1}</div>
         <div class="stepper">
           <button type="button" class="step-btn minus" onclick="stepSetValue(this,-0.25)" aria-label="Убавить вес">−</button>
-          <input type="text" inputmode="decimal" class="set-input" value="${escHtml(toDisplayWeight(st.weight))}" placeholder="${weightUnitLabel()}" oninput="editSessionData.exercises[${i}].sets[${sIdx}].weight=toStorageWeight(this.value)">
+          <input type="text" inputmode="decimal" class="set-input" value="${escHtml(toDisplayWeight(st.weight, exerciseWeightUnit(e)))}" placeholder="${weightUnitLabel(exerciseWeightUnit(e))}" oninput="editSessionData.exercises[${i}].sets[${sIdx}].weight=toStorageWeight(this.value, exerciseWeightUnit(editSessionData.exercises[${i}]))">
           <button type="button" class="step-btn plus" onclick="stepSetValue(this,0.25)" aria-label="Прибавить вес">+</button>
         </div>
         <div class="stepper">
@@ -4664,7 +4685,7 @@ function renderSessionEdit(){
         <span>${i+1}. ${escHtml(e.name)}</span>
         ${exActionsHtml(i)}
       </div>
-      <div class="col-labels"><span></span><span>Вес</span><span>Повторы</span><span></span><span></span></div>
+      <div class="col-labels"><span></span><button type="button" class="unit-toggle" onclick="toggleEditWeightUnit(${i})">Вес ${weightUnitLabel(exerciseWeightUnit(e))}</button><span>Повторы</span><span></span><span></span></div>
       ${rows}
       <span class="se-add-set" onclick="addEditSet(${i})">+ добавить подход</span>
       <textarea class="note-textarea" placeholder="Заметка к упражнению…" style="margin-top:6px; min-height:44px;" oninput="editSessionData.exercises[${i}].note=this.value">${escHtml(e.note)}</textarea>
@@ -4673,6 +4694,11 @@ function renderSessionEdit(){
   html += `<div class="merged-list-block">${exHtml}</div>`;
   html += `<button type="button" class="set-adjust-btn plus" style="width:100%; margin-top:2px; margin-bottom:16px;" onclick="openSessionExercisePicker('add')">+ Добавить упражнение</button>`;
   wrap.innerHTML = html;
+}
+function toggleEditWeightUnit(i){
+  const ex = editSessionData.exercises[i];
+  ex.weightUnit = exerciseWeightUnit(ex) === "lb" ? "kg" : "lb";
+  renderSessionEdit();
 }
 function addEditSet(i){
   editSessionData.exercises[i].sets.push({ weight:"", reps:"" });
