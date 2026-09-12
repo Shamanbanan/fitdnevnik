@@ -1369,6 +1369,9 @@
         </div>
       </div>
       <button class="btn-secondary" style="margin-top:2px;" onclick="submitChangePassword()">Сменить пароль</button>
+
+      <div style="height:1px; background:var(--border-soft); margin:20px 0 16px;"></div>
+      <button class="btn-secondary" style="margin-top:2px; color:var(--danger); border-color:rgba(184,92,92,0.35);" onclick="submitLogout()">Выйти из аккаунта</button>
     </div></div>
   </div>
 
@@ -1670,6 +1673,16 @@
    пользователя с сервера и показывает #appRoot. */
 let authMode = "login";
 let currentUsername = null;
+const LAST_USERNAME_KEY = "dnevnik:lastUsername";
+let usernameAtStartup = null;
+try{ usernameAtStartup = window.localStorage.getItem(LAST_USERNAME_KEY) || null; }catch(e){}
+
+function rememberUsername(username){
+  try{
+    if(username) window.localStorage.setItem(LAST_USERNAME_KEY, username);
+    else window.localStorage.removeItem(LAST_USERNAME_KEY);
+  }catch(e){}
+}
 function setAuthMode(mode){
   authMode = mode;
   document.getElementById("authTabLogin").classList.toggle("active", mode==="login");
@@ -1707,7 +1720,7 @@ async function submitAuthForm(e){
     const data = await res.json().catch(()=>({}));
     if(!res.ok){ showAuthError(data.error || "Не удалось выполнить запрос"); return; }
     currentUsername = data.username;
-    try{ window.localStorage.setItem("dnevnik:lastUsername", currentUsername || ""); }catch(e2){}
+    rememberUsername(currentUsername);
     await enterApp();
   }catch(err){
     showAuthError("Нет соединения с сервером");
@@ -1727,7 +1740,10 @@ async function submitChangeUsername(){
     });
     const data = await res.json().catch(()=>({}));
     if(!res.ok){ showToast(data.error || "Не удалось сменить логин"); return; }
+    const previousUsername = currentUsername;
+    localStorage._renameOwner(previousUsername, data.username);
     currentUsername = data.username;
+    rememberUsername(currentUsername);
     document.getElementById("accountUsernameLabel").textContent = currentUsername;
     document.getElementById("accountNewUsername").value = "";
     document.getElementById("accountUsernamePassword").value = "";
@@ -1751,6 +1767,20 @@ async function submitChangePassword(){
     document.getElementById("accountCurrentPassword").value = "";
     document.getElementById("accountNewPassword").value = "";
     showToast("Пароль изменён — другие устройства разлогинены");
+  }catch(err){
+    showToast("Нет соединения с сервером");
+  }
+}
+async function submitLogout(){
+  try{
+    const res = await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "same-origin"
+    });
+    if(!res.ok){ showToast("Не удалось выйти из аккаунта"); return; }
+    currentUsername = null;
+    rememberUsername(null);
+    window.location.reload();
   }catch(err){
     showToast("Нет соединения с сервером");
   }
@@ -1802,37 +1832,90 @@ async function enterApp(){
    (это синхронно и не зависит от сети), а ключи, которые не удалось отправить на
    сервер, помечаются как "ожидающие синхронизации" и достаются из браузерного
    хранилища при следующей гидратации — так их не затирает более старый снимок с
-   сервера. Повторная отправка идёт по событию 'online' и по таймеру (событие online
-   не всегда надёжно, особенно в мобильных браузерах). */
+   сервера. Кэш и очередь разделены по логину, чтобы данные двух аккаунтов на одном
+   устройстве не смешивались. Повторная отправка идёт по событию 'online' и по
+   таймеру (событие online не всегда надёжно, особенно в мобильных браузерах). */
 function createRemoteStorageShim(){
-  const cache = {};
+  const cache = Object.create(null);
   const debouncedPuts = {};
   const inFlight = new Set();
-  const CACHE_PREFIX = "dnevnik:cache:";
-  const PENDING_KEY = "dnevnik:pendingSync";
+  const CACHE_ROOT = "dnevnik:user-cache:";
+  const PENDING_ROOT = "dnevnik:user-pending:";
+  const MIGRATED_ROOT = "dnevnik:user-storage-migrated:";
+  const LEGACY_CACHE_PREFIX = "dnevnik:cache:";
+  const LEGACY_PENDING_KEY = "dnevnik:pendingSync";
+  const LEGACY_OWNER_KEY = "dnevnik:legacy-storage-owner";
 
-  function loadPending(){
-    try{ return JSON.parse(window.localStorage.getItem(PENDING_KEY)) || {}; }catch(e){ return {}; }
+  try{
+    if(usernameAtStartup && !window.localStorage.getItem(LEGACY_OWNER_KEY)){
+      window.localStorage.setItem(LEGACY_OWNER_KEY, usernameAtStartup);
+    }
+  }catch(e){}
+
+  function ownerName(){
+    return currentUsername || usernameAtStartup || "";
   }
-  function savePending(pending){
-    window.localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+  function ownerToken(owner = ownerName()){
+    return encodeURIComponent(String(owner || ""));
+  }
+  function cachePrefix(owner = ownerName()){
+    return CACHE_ROOT + ownerToken(owner) + ":";
+  }
+  function pendingKey(owner = ownerName()){
+    return PENDING_ROOT + ownerToken(owner);
+  }
+  function clearMemory(){
+    Object.keys(cache).forEach(key=>delete cache[key]);
+  }
+  function ensureOwnerStorage(owner = ownerName()){
+    let legacyOwner = usernameAtStartup;
+    try{ legacyOwner = window.localStorage.getItem(LEGACY_OWNER_KEY) || legacyOwner; }catch(e){}
+    if(!owner || owner !== legacyOwner) return;
+    const marker = MIGRATED_ROOT + ownerToken(owner);
+    try{
+      if(window.localStorage.getItem(marker)) return;
+      const prefix = cachePrefix(owner);
+      for(let i=0;i<window.localStorage.length;i++){
+        const key = window.localStorage.key(i);
+        if(key && key.indexOf(LEGACY_CACHE_PREFIX) === 0){
+          const dataKey = key.slice(LEGACY_CACHE_PREFIX.length);
+          if(window.localStorage.getItem(prefix + dataKey) === null){
+            window.localStorage.setItem(prefix + dataKey, window.localStorage.getItem(key));
+          }
+        }
+      }
+      if(window.localStorage.getItem(pendingKey(owner)) === null){
+        const legacyPending = window.localStorage.getItem(LEGACY_PENDING_KEY);
+        if(legacyPending !== null) window.localStorage.setItem(pendingKey(owner), legacyPending);
+      }
+      window.localStorage.setItem(marker, "1");
+    }catch(e){ /* legacy cache stays available if migration cannot be completed */ }
+  }
+
+  function loadPending(owner = ownerName()){
+    ensureOwnerStorage(owner);
+    try{ return JSON.parse(window.localStorage.getItem(pendingKey(owner))) || {}; }catch(e){ return {}; }
+  }
+  function savePending(pending, owner = ownerName()){
+    window.localStorage.setItem(pendingKey(owner), JSON.stringify(pending));
   }
   // The durable outbox stores the value itself, before any network request.
-  function markPending(key, value){
-    const pending = loadPending();
+  function markPending(key, value, owner = ownerName()){
+    const pending = loadPending(owner);
     pending[key] = value;
-    savePending(pending);
+    savePending(pending, owner);
   }
-  function persistLocal(key, value){
-    window.localStorage.setItem(CACHE_PREFIX + key, value);
+  function persistLocal(key, value, owner = ownerName()){
+    window.localStorage.setItem(cachePrefix(owner) + key, value);
   }
-  async function sendToServer(key){
-    if(inFlight.has(key)) return;
-    const pending = loadPending();
+  async function sendToServer(key, owner = ownerName()){
+    const requestId = ownerToken(owner) + ":" + key;
+    if(inFlight.has(requestId)) return;
+    const pending = loadPending(owner);
     if(!Object.prototype.hasOwnProperty.call(pending, key)) return;
-    const value = typeof pending[key] === "string" ? pending[key] : window.localStorage.getItem(CACHE_PREFIX + key);
+    const value = typeof pending[key] === "string" ? pending[key] : window.localStorage.getItem(cachePrefix(owner) + key);
     if(value === null) return;
-    inFlight.add(key);
+    inFlight.add(requestId);
     let acknowledged = false;
     try{
       const res = await fetch("/api/data/" + encodeURIComponent(key), {
@@ -1840,32 +1923,34 @@ function createRemoteStorageShim(){
         credentials: "same-origin", body: JSON.stringify({ value })
       });
       if(!res.ok) throw new Error("save failed");
-      const latest = loadPending();
-      const latestValue = typeof latest[key] === "string" ? latest[key] : window.localStorage.getItem(CACHE_PREFIX + key);
+      const latest = loadPending(owner);
+      const latestValue = typeof latest[key] === "string" ? latest[key] : window.localStorage.getItem(cachePrefix(owner) + key);
       if(latestValue === value){
         // Save the acknowledged value before removing its durable outbox entry.
-        persistLocal(key, value);
+        persistLocal(key, value, owner);
         delete latest[key];
-        savePending(latest);
+        savePending(latest, owner);
       }
       acknowledged = true;
     }catch(e){
       if(typeof showToast === "function") showToast("Нет подтверждения сервера — запись сохранена на устройстве");
     }finally{
-      inFlight.delete(key);
+      inFlight.delete(requestId);
     }
-    if(acknowledged && Object.prototype.hasOwnProperty.call(loadPending(), key)) putRemote(key);
+    if(acknowledged && Object.prototype.hasOwnProperty.call(loadPending(owner), key)) putRemote(key, owner);
   }
 
-  function putRemote(key){
-    if(!debouncedPuts[key]) debouncedPuts[key] = debounce((k)=>{ sendToServer(k); }, 500);
-    debouncedPuts[key](key);
+  function putRemote(key, owner = ownerName()){
+    const requestId = ownerToken(owner) + ":" + key;
+    if(!debouncedPuts[requestId]) debouncedPuts[requestId] = debounce((k, o)=>{ sendToServer(k, o); }, 500);
+    debouncedPuts[requestId](key, owner);
   }
 
   function retryPending(){
-    const pending = loadPending();
+    const owner = ownerName();
+    const pending = loadPending(owner);
     Object.keys(pending).forEach(k=>{
-      if(Object.prototype.hasOwnProperty.call(cache, k)) sendToServer(k);
+      if(Object.prototype.hasOwnProperty.call(cache, k)) sendToServer(k, owner);
     });
   }
   try{
@@ -1875,28 +1960,34 @@ function createRemoteStorageShim(){
 
   return {
     _hydrate(data){
+      clearMemory();
       Object.assign(cache, data || {});
       /* локальные несинхронизированные значения новее серверного снимка — не даём
          серверу (который их ещё не видел) затереть то, что записано на этом устройстве */
-      const pending = loadPending();
+      const owner = ownerName();
+      const pending = loadPending(owner);
       Object.keys(pending).forEach(k=>{
-        const local = window.localStorage.getItem(CACHE_PREFIX + k);
+        const local = window.localStorage.getItem(cachePrefix(owner) + k);
         if(typeof pending[k] === "string") cache[k] = pending[k];
         else if(local !== null) cache[k] = local;
       });
       Object.keys(cache).forEach(k=>{
         if(!Object.prototype.hasOwnProperty.call(pending, k)){
-          try{ persistLocal(k, cache[k]); }catch(e){ console.error("Local cache unavailable", e); }
+          try{ persistLocal(k, cache[k], owner); }catch(e){ console.error("Local cache unavailable", e); }
         }
       });
       if(Object.keys(pending).length) retryPending();
     },
     /* есть ли вообще локальный кэш с прошлого успешного входа (для офлайн-открытия) */
     _hasLocalCache(){
-      if(Object.keys(loadPending()).length) return true;
+      const owner = ownerName();
+      if(!owner) return false;
+      if(Object.keys(loadPending(owner)).length) return true;
+      const prefix = cachePrefix(owner);
       try{
         for(let i=0;i<window.localStorage.length;i++){
-          if(window.localStorage.key(i).indexOf(CACHE_PREFIX) === 0) return true;
+          const key = window.localStorage.key(i);
+          if(key && key.indexOf(prefix) === 0) return true;
         }
       }catch(e){}
       return false;
@@ -1904,13 +1995,16 @@ function createRemoteStorageShim(){
     /* открыть приложение по тому, что уже лежит в браузере, без ответа сервера —
        используется, когда /api/bootstrap недоступен (нет сети в зале) */
     _hydrateFromLocalCache(){
+      clearMemory();
+      const owner = ownerName();
+      const prefix = cachePrefix(owner);
       try{
         for(let i=0;i<window.localStorage.length;i++){
           const k = window.localStorage.key(i);
-          if(k.indexOf(CACHE_PREFIX) === 0) cache[k.slice(CACHE_PREFIX.length)] = window.localStorage.getItem(k);
+          if(k && k.indexOf(prefix) === 0) cache[k.slice(prefix.length)] = window.localStorage.getItem(k);
         }
       }catch(e){}
-      const pending = loadPending();
+      const pending = loadPending(owner);
       Object.keys(pending).forEach(k=>{
         if(typeof pending[k] === "string") cache[k] = pending[k];
       });
@@ -1930,10 +2024,32 @@ function createRemoteStorageShim(){
     },
     removeItem(key){
       delete cache[key];
-      try{ window.localStorage.removeItem(CACHE_PREFIX + key); }catch(e){}
+      try{ window.localStorage.removeItem(cachePrefix() + key); }catch(e){}
       const pending = loadPending();
       delete pending[key];
       savePending(pending);
+    },
+    _renameOwner(previousOwner, nextOwner){
+      if(!previousOwner || !nextOwner || previousOwner === nextOwner) return;
+      const previousPrefix = cachePrefix(previousOwner);
+      const nextPrefix = cachePrefix(nextOwner);
+      try{
+        const keys = [];
+        for(let i=0;i<window.localStorage.length;i++){
+          const key = window.localStorage.key(i);
+          if(key && key.indexOf(previousPrefix) === 0) keys.push(key);
+        }
+        keys.forEach(key=>{
+          const suffix = key.slice(previousPrefix.length);
+          window.localStorage.setItem(nextPrefix + suffix, window.localStorage.getItem(key));
+          window.localStorage.removeItem(key);
+        });
+        const mergedPending = { ...loadPending(nextOwner), ...loadPending(previousOwner) };
+        savePending(mergedPending, nextOwner);
+        window.localStorage.removeItem(pendingKey(previousOwner));
+      }catch(e){
+        console.error("Не удалось перенести локальный кэш после смены логина", e);
+      }
     }
   };
 }
@@ -2227,6 +2343,31 @@ const T_KEY = "dnevnik_templates_v2";
 const S_KEY = "dnevnik_sessions_v2";
 const L_KEY = "dnevnik_library_v1";
 
+function isDataObject(value){ return !!value && typeof value === "object" && !Array.isArray(value); }
+function isDateKey(value){
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+  if(!match) return false;
+  const date = new Date(Number(match[1]), Number(match[2])-1, Number(match[3]));
+  return date.getFullYear() === Number(match[1]) && date.getMonth() === Number(match[2])-1 && date.getDate() === Number(match[3]);
+}
+function hasExerciseName(exercise){ return isDataObject(exercise) && typeof exercise.name === "string" && exercise.name.trim().length > 0; }
+function isTemplateRecord(template){
+  return isDataObject(template) && (typeof template.id === "string" || typeof template.id === "number") &&
+    typeof template.name === "string" && Array.isArray(template.exercises) && template.exercises.every(exercise =>
+      hasExerciseName(exercise) && (exercise.cardio || (Number.isFinite(Number(exercise.sets)) && Number(exercise.sets) > 0))
+    );
+}
+function isSessionRecord(session){
+  return isDataObject(session) && (session.id === undefined || typeof session.id === "string" || typeof session.id === "number") &&
+    isDateKey(session.date) && typeof session.templateName === "string" && Array.isArray(session.exercises) &&
+    session.exercises.every(exercise => hasExerciseName(exercise) && (exercise.cardio ||
+      (Array.isArray(exercise.sets) && exercise.sets.every(isDataObject))));
+}
+function isLibraryRecord(item){
+  return isDataObject(item) && (typeof item.id === "string" || typeof item.id === "number") &&
+    typeof item.name === "string" && typeof item.group === "string";
+}
+
 /* try/catch-обёртка над localStorage.setItem: не даёт QuotaExceededError и т.п.
    вылететь необработанной ошибкой и молча "потерять" сохранение — показывает тост */
 function safeSetItem(key, value){
@@ -2244,7 +2385,9 @@ function loadLibrary(){
   const raw = localStorage.getItem(L_KEY);
   if(raw){
     try{
-      const list = JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if(!Array.isArray(parsed)) throw new TypeError("library must be an array");
+      const list = parsed.filter(isLibraryRecord).map(item=>({ ...item, id:String(item.id) }));
       let changed = false;
       list.forEach(it=>{
         if(it.video === undefined){
@@ -2264,7 +2407,7 @@ function loadLibrary(){
   safeSetItem(L_KEY, JSON.stringify(seed));
   return seed;
 }
-function saveLibrary(list){ safeSetItem(L_KEY, JSON.stringify(list)); }
+function saveLibrary(list){ return safeSetItem(L_KEY, JSON.stringify(list)); }
 let library; /* заполняется в bootApp() после гидратации localStorage-шима с сервера */
 let libraryOrigin = "builder";
 let editingLibraryId = null;
@@ -2274,25 +2417,41 @@ let currentLibEquipment = EQUIPMENT_LIST[0];
 function loadTemplates(){
   const raw = localStorage.getItem(T_KEY);
   if(raw){
-    try{ return JSON.parse(raw); }
+    try{
+      const parsed = JSON.parse(raw);
+      if(!Array.isArray(parsed)) return SEED_TEMPLATES.slice();
+      return parsed.filter(isTemplateRecord).map(template=>({ ...template, id:String(template.id) }));
+    }
     catch(e){ return SEED_TEMPLATES.slice(); }
   }
   safeSetItem(T_KEY, JSON.stringify(SEED_TEMPLATES));
   return SEED_TEMPLATES.slice();
 }
-function saveTemplates(list){ safeSetItem(T_KEY, JSON.stringify(list)); }
+function saveTemplates(list){ return safeSetItem(T_KEY, JSON.stringify(list)); }
 function loadSessions(){
   let list;
-  try{ list = JSON.parse(localStorage.getItem(S_KEY)) || []; }catch(e){ list = []; }
+  try{
+    const parsed = JSON.parse(localStorage.getItem(S_KEY)) || [];
+    list = Array.isArray(parsed) ? parsed.filter(isSessionRecord) : [];
+  }catch(e){ list = []; }
   let changed = false;
-  list.forEach(s=>{ if(!s.id){ s.id = "s"+Date.now()+Math.random().toString(36).slice(2,7); changed = true; } });
+  list.forEach(s=>{
+    if(!s.id){ s.id = "s"+Date.now()+Math.random().toString(36).slice(2,7); changed = true; }
+    else if(typeof s.id !== "string"){ s.id = String(s.id); changed = true; }
+  });
   if(changed) safeSetItem(S_KEY, JSON.stringify(list));
   return list;
 }
 function saveSessions(list){ return safeSetItem(S_KEY, JSON.stringify(list)); }
 
 const BW_KEY = "dnevnik_bodyweight_v1";
-function loadBodyweights(){ try{ return JSON.parse(localStorage.getItem(BW_KEY)) || {}; }catch(e){ return {}; } }
+function loadBodyweights(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(BW_KEY)) || {};
+    if(!isDataObject(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter(([date, value])=>isDateKey(date) && (typeof value === "string" || typeof value === "number")));
+  }catch(e){ return {}; }
+}
 function saveBodyweightForDate(date, value){
   const all = loadBodyweights();
   if(value){ all[date] = value; } else { delete all[date]; }
@@ -2317,7 +2476,13 @@ const MEASURE_FIELDS = [
   { key:"thigh", label:"Бедро" },
   { key:"calf", label:"Икра" }
 ];
-function loadMeasurements(){ try{ return JSON.parse(localStorage.getItem(MEASURE_KEY)) || {}; }catch(e){ return {}; } }
+function loadMeasurements(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(MEASURE_KEY)) || {};
+    if(!isDataObject(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter(([date, value])=>isDateKey(date) && isDataObject(value)));
+  }catch(e){ return {}; }
+}
 function saveMeasurementsForDate(date, values){
   const all = loadMeasurements();
   const hasAny = MEASURE_FIELDS.some(f => values[f.key]);
@@ -2337,7 +2502,7 @@ function getMeasurementSeries(key){
 }
 function resetMeasureForm(){
   MEASURE_FIELDS.forEach(f => { document.getElementById("measure-"+f.key).value = ""; });
-  document.getElementById("measureDateInput").value = new Date().toISOString().slice(0,10);
+  document.getElementById("measureDateInput").value = todayISO();
 }
 let measureFormOpen = false;
 function applyMeasureFormVisibility(){
@@ -2367,7 +2532,7 @@ function editMeasurementEntry(date){
   document.getElementById("measureDateInput").value = date;
 }
 function saveMeasurementEntry(){
-  const date = document.getElementById("measureDateInput").value || new Date().toISOString().slice(0,10);
+  const date = document.getElementById("measureDateInput").value || todayISO();
   const values = {};
   let any = false;
   MEASURE_FIELDS.forEach(f => {
@@ -2436,13 +2601,13 @@ function renderMeasureHistory(){
   wrap.innerHTML = `<div class="merged-list-block">` + dates.map(d=>{
     const entry = all[d];
     const valsHtml = MEASURE_FIELDS.filter(f=>entry[f.key])
-      .map(f=>`<span>${f.label}: <b>${entry[f.key]}</b></span>`).join("");
+      .map(f=>`<span>${f.label}: <b>${escHtml(entry[f.key])}</b></span>`).join("");
     return `<div class="measure-hist-row">
       <div class="measure-hist-head">
         <span class="measure-hist-date">${fmtDate(d)}</span>
         <div class="actions">
-          <button class="ed" onclick="editMeasurementEntry('${d}')">${pencilIcon(15)}</button>
-          <button class="del" onclick="deleteMeasurementEntry('${d}')">${trashIcon(15)}</button>
+          <button class="ed" onclick="editMeasurementEntry('${escJsAttr(d)}')">${pencilIcon(15)}</button>
+          <button class="del" onclick="deleteMeasurementEntry('${escJsAttr(d)}')">${trashIcon(15)}</button>
         </div>
       </div>
       <div class="measure-hist-vals">${valsHtml}</div>
@@ -2452,8 +2617,13 @@ function renderMeasureHistory(){
 }
 
 const PROFILE_KEY = "dnevnik_profile_v1";
-function loadProfile(){ try{ return JSON.parse(localStorage.getItem(PROFILE_KEY)) || {}; }catch(e){ return {}; } }
-function saveProfile(p){ safeSetItem(PROFILE_KEY, JSON.stringify(p)); }
+function loadProfile(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(PROFILE_KEY)) || {};
+    return isDataObject(parsed) ? parsed : {};
+  }catch(e){ return {}; }
+}
+function saveProfile(p){ return safeSetItem(PROFILE_KEY, JSON.stringify(p)); }
 
 const UNIT_KEY = "dnevnik_weight_unit_v1";
 function loadWeightUnit(){ try{ return localStorage.getItem(UNIT_KEY) === "lb" ? "lb" : "kg"; }catch(e){ return "kg"; } }
@@ -2524,7 +2694,12 @@ function toggleWeightUnitQuick(button){
 
 const DRAFT_KEY = "dnevnik_draft_v1";
 function draftStorageKey(templateId, date){ return `${templateId}::${date}`; }
-function loadAllDrafts(){ try{ return JSON.parse(localStorage.getItem(DRAFT_KEY)) || {}; }catch(e){ return {}; } }
+function loadAllDrafts(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(DRAFT_KEY)) || {};
+    return isDataObject(parsed) ? parsed : {};
+  }catch(e){ return {}; }
+}
 function loadDraft(templateId, date){
   const all = loadAllDrafts();
   return all[draftStorageKey(templateId, date)] || null;
@@ -2776,8 +2951,14 @@ document.addEventListener("pointermove", onSheetDragMove);
 document.addEventListener("pointerup", endSheetDrag);
 document.addEventListener("pointercancel", endSheetDrag);
 
-function fmtDate(d){ const [y,m,day]=d.split("-"); return `${day}.${m}.${y}`; }
-function todayISO(){ return new Date().toISOString().slice(0,10); }
+function dateToLocalISO(date){
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+}
+function todayISO(){ return dateToLocalISO(new Date()); }
+function fmtDate(d){
+  const match = isDateKey(d) && /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d));
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : "—";
+}
 function planIconSmall(size=12){
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" style="display:inline-block; vertical-align:middle; flex-shrink:0;" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <rect x="3.5" y="5" width="17" height="15" rx="3"/>
@@ -2812,7 +2993,7 @@ function renderToday(){
     searchField.style.display = "none";
     const plannedForRef = plannedId === selectedTpl.id;
     if(plannedTpl && !plannedForRef){
-      inner += `<div class="today-plan-note">${planIconSmall(13)} На ${dateLabel} запланировано: <b>${escHtml(plannedTpl.name)}</b><span class="link-btn" onclick="selectTemplate('${plannedTpl.id}')">Выбрать</span></div>`;
+      inner += `<div class="today-plan-note">${planIconSmall(13)} На ${dateLabel} запланировано: <b>${escHtml(plannedTpl.name)}</b><span class="link-btn" onclick="selectTemplate('${escJsAttr(plannedTpl.id)}')">Выбрать</span></div>`;
     }
     inner += `
       <div class="today-selected-row">
@@ -2841,7 +3022,7 @@ function renderToday(){
       inner += `<div class="empty-hint">Ничего не найдено по «${escHtml(searchTerm)}».</div>`;
     } else {
       inner += `<div class="set-chips">` +
-        filtered.map(t => `<div class="set-chip ${t.id===selectedTemplateId?'active':''} ${t.id===plannedId?'planned':''}" onclick="selectTemplate('${t.id}')">${t.id===plannedId?`<span class="plan-tag">${planIconSmall(11)}</span>`:(t.fav?'★ ':'')}${escHtml(t.name)}<small>${t.exercises.length} упр.</small></div>`).join("") +
+        filtered.map(t => `<div class="set-chip ${t.id===selectedTemplateId?'active':''} ${t.id===plannedId?'planned':''}" onclick="selectTemplate('${escJsAttr(t.id)}')">${t.id===plannedId?`<span class="plan-tag">${planIconSmall(11)}</span>`:(t.fav?'★ ':'')}${escHtml(t.name)}<small>${t.exercises.length} упр.</small></div>`).join("") +
         `</div>`;
     }
   }
@@ -2876,8 +3057,16 @@ function selectTemplate(id){
 
 /* ============ Планы (calendar day → набор) ============ */
 const PLANS_KEY = "dnevnik_plans_v1";
-function loadPlans(){ try{ return JSON.parse(localStorage.getItem(PLANS_KEY)) || {}; }catch(e){ return {}; } }
-function savePlans(p){ safeSetItem(PLANS_KEY, JSON.stringify(p)); }
+function loadPlans(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(PLANS_KEY)) || {};
+    if(!isDataObject(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed)
+      .filter(([date, templateId])=>isDateKey(date) && (typeof templateId === "string" || typeof templateId === "number"))
+      .map(([date, templateId])=>[date, String(templateId)]));
+  }catch(e){ return {}; }
+}
+function savePlans(p){ return safeSetItem(PLANS_KEY, JSON.stringify(p)); }
 function getPlanForDate(dateStr){ return loadPlans()[dateStr] || null; }
 
 const _planNow = new Date();
@@ -3008,7 +3197,7 @@ function renderPlansScreen(){
       html += `<div class="empty-hint" style="margin-top:14px;">Ничего не найдено по «${escHtml(searchTerm)}».</div>`;
     } else {
       html += `<div class="set-chips">` +
-        filtered.map(t=>`<div class="set-chip ${selTplId===t.id?'active':''}" onclick="assignPlanToSelectedDay('${t.id}')">${t.fav?'★ ':''}${escHtml(t.name)}<small>${t.exercises.length} упр.</small></div>`).join("") +
+        filtered.map(t=>`<div class="set-chip ${selTplId===t.id?'active':''}" onclick="assignPlanToSelectedDay('${escJsAttr(t.id)}')">${t.fav?'★ ':''}${escHtml(t.name)}<small>${t.exercises.length} упр.</small></div>`).join("") +
         `</div>`;
     }
   }
@@ -3033,7 +3222,7 @@ function renderTodayLog(){
   sessionRating = 0;
 
   let html = `<div class="merged-list-block">`;
-  html += `<div class="today-header today-header-compact merged-list-header"><span class="today-header-sub">Состав тренировки</span><span class="edit-link" onclick="openTemplateEditor('${tpl.id}')">Изменить состав</span></div>`;
+  html += `<div class="today-header today-header-compact merged-list-header"><span class="today-header-sub">Состав тренировки</span><span class="edit-link" onclick="openTemplateEditor('${escJsAttr(tpl.id)}')">Изменить состав</span></div>`;
 
   tpl.exercises.forEach((ex,i)=>{
     if(ex.cardio){
@@ -3281,7 +3470,7 @@ function openExMenu(i){
   const infoEl = document.getElementById("exMenuInfo");
   if(infoEl){
     infoEl.innerHTML = hasPrev
-      ? `<b>${fmtDate(last.date)}:</b> ${last.sets.filter(s=>s.weight||s.reps).map(s=>`${toDisplayWeight(s.weight, cardWeightUnit(document.querySelector(`#todayLogWrap .exercise[data-idx="${i}"]`)))||"–"}×${s.reps||"–"}`).join("  ")} ${weightUnitLabel(cardWeightUnit(document.querySelector(`#todayLogWrap .exercise[data-idx="${i}"]`)))}`
+      ? `<b>${fmtDate(last.date)}:</b> ${last.sets.filter(s=>s.weight||s.reps).map(s=>`${escHtml(toDisplayWeight(s.weight, cardWeightUnit(document.querySelector(`#todayLogWrap .exercise[data-idx="${i}"]`)))||"–")}×${escHtml(s.reps||"–")}`).join("  ")} ${weightUnitLabel(cardWeightUnit(document.querySelector(`#todayLogWrap .exercise[data-idx="${i}"]`)))}`
       : "Первая запись по этому упражнению";
   }
   let itemsHtml = "";
@@ -4015,7 +4204,7 @@ function confirmSaveSession(){
 function saveSession(){
   const tpl = templates.find(t=>t.id===selectedTemplateId);
   if(!tpl) return;
-  const date = document.getElementById("sessionDate").value || new Date().toISOString().slice(0,10);
+  const date = document.getElementById("sessionDate").value || todayISO();
   const exercises = [];
   document.querySelectorAll(`#todayLogWrap .exercise`).forEach((div,i)=>{
     const def = tpl.exercises[i];
@@ -4071,15 +4260,15 @@ function renderBuilderList(){
   }
   wrap.innerHTML = `<div class="merged-list-block">` + list.map(t=>{
     const exListHtml = t.exercises.map((ex,i)=>{
-      const meta = ex.cardio ? escHtml(ex.target || '') : `${ex.sets}×${escHtml(ex.reps||'')}`;
+      const meta = ex.cardio ? escHtml(ex.target || '') : `${escHtml(ex.sets)}×${escHtml(ex.reps||'')}`;
       return `<div class="tpl-ex-row"><span class="i">${i+1}</span><span class="n">${escHtml(ex.name)}</span><span class="m">${meta}</span></div>`;
     }).join("");
     return `
-    <div class="tpl-card" id="tplCard-${t.id}">
-      <div class="tpl-card-head" onclick="toggleTplCard('${t.id}')">
+    <div class="tpl-card" id="tplCard-${escHtml(t.id)}">
+      <div class="tpl-card-head" onclick="toggleTplCard('${escJsAttr(t.id)}')">
         <div class="tpl-card-head-main"><div class="tpl-name">${escHtml(t.name)}</div><div class="tpl-count">${t.exercises.length} упражнений</div></div>
         <div class="tpl-card-head-side">
-          <button type="button" class="fav-star ${t.fav?'active':''}" onclick="event.stopPropagation(); toggleTemplateFavorite('${t.id}')" title="В избранное">${starSvgInline(19)}</button>
+          <button type="button" class="fav-star ${t.fav?'active':''}" onclick="event.stopPropagation(); toggleTemplateFavorite('${escJsAttr(t.id)}')" title="В избранное">${starSvgInline(19)}</button>
           <span class="tpl-chevron">${chevronIcon(11)}</span>
         </div>
       </div>
@@ -4087,9 +4276,9 @@ function renderBuilderList(){
         <div class="tpl-body-inner">
           <div class="tpl-ex-list">${exListHtml}</div>
           <div class="tpl-actions">
-            <button class="mini-btn accent" onclick="openTemplateEditor('${t.id}')">${pencilIcon(13)}<span>Изменить</span></button>
-            <button class="mini-btn" onclick="duplicateTemplate('${t.id}')">${repeatIcon(13)}<span>Дублировать</span></button>
-            <button class="mini-btn danger" onclick="deleteTemplate('${t.id}')">${trashIcon(13)}<span>Удалить</span></button>
+            <button class="mini-btn accent" onclick="openTemplateEditor('${escJsAttr(t.id)}')">${pencilIcon(13)}<span>Изменить</span></button>
+            <button class="mini-btn" onclick="duplicateTemplate('${escJsAttr(t.id)}')">${repeatIcon(13)}<span>Дублировать</span></button>
+            <button class="mini-btn danger" onclick="deleteTemplate('${escJsAttr(t.id)}')">${trashIcon(13)}<span>Удалить</span></button>
           </div>
         </div>
       </div>
@@ -4147,13 +4336,35 @@ function duplicateTemplate(id){
   renderBuilderList();
   showToast("Набор продублирован");
 }
-function deleteTemplate(id){
+function deleteTemplate(id, onDeleted){
   confirmAction("Удалить этот набор тренировки насовсем?", ()=>{
-    templates = templates.filter(t=>t.id!==id);
-    saveTemplates(templates);
-    if(selectedTemplateId===id) selectedTemplateId = null;
+    const nextTemplates = templates.filter(t=>t.id!==id);
+    if(!saveTemplates(nextTemplates)) return;
+    templates = nextTemplates;
+
+    const plans = loadPlans();
+    let plansChanged = false;
+    Object.keys(plans).forEach(date=>{
+      if(plans[date] === id){ delete plans[date]; plansChanged = true; }
+    });
+    if(plansChanged) savePlans(plans);
+
+    const drafts = loadAllDrafts();
+    let draftsChanged = false;
+    const draftPrefix = String(id) + "::";
+    Object.keys(drafts).forEach(key=>{
+      if(key.indexOf(draftPrefix) === 0){ delete drafts[key]; draftsChanged = true; }
+    });
+    if(draftsChanged) safeSetItem(DRAFT_KEY, JSON.stringify(drafts));
+
+    if(selectedTemplateId===id){
+      selectedTemplateId = null;
+      todayWorkoutStarted = false;
+      stopGlobalRestTimer();
+    }
     renderBuilderList();
     showToast("Удалено");
+    if(typeof onDeleted === "function") onDeleted();
   });
 }
 
@@ -4433,18 +4644,18 @@ function saveTemplate(){
 
   if(editingTemplateId){
     const idx = templates.findIndex(t=>t.id===editingTemplateId);
-    templates[idx] = { id: editingTemplateId, name, exercises: draftExercises };
+    if(idx === -1){ showToast("Тренировка не найдена"); return; }
+    templates[idx] = { ...templates[idx], name, exercises: draftExercises };
   } else {
     templates.push({ id: "t"+Date.now(), name, exercises: draftExercises });
   }
-  saveTemplates(templates);
+  if(!saveTemplates(templates)) return;
   showToast("Тренировка сохранена");
   switchView("builder");
 }
 function deleteTemplateFromEditor(){
   if(!editingTemplateId) return;
-  deleteTemplate(editingTemplateId);
-  switchView("builder");
+  deleteTemplate(editingTemplateId, ()=>switchView("builder"));
 }
 
 const MONTHS_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
@@ -4501,7 +4712,7 @@ function sessionMatchesPeriod(s){
   if(!days) return true;
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - (days - 1));
-  const cutoffStr = cutoff.toISOString().slice(0,10);
+  const cutoffStr = dateToLocalISO(cutoff);
   return s.date >= cutoffStr;
 }
 document.getElementById("histFilterChips").addEventListener("click", e=>{
@@ -4566,7 +4777,7 @@ function renderHistory(){
 
     const exCount = s.exercises.filter(e=> e.cardio ? e.done : (e.sets && e.sets.some(x=>x.weight||x.reps))).length;
     const vol = Math.round(parseFloat(toDisplayWeight(sessionVolume(s))) || 0);
-    const ratingHtml = s.rating ? `<span class="hist-rating">${starSvgInline()}${String(s.rating).replace(/\.0$/,'')}</span>` : "";
+    const ratingHtml = s.rating ? `<span class="hist-rating">${starSvgInline()}${escHtml(String(s.rating).replace(/\.0$/,''))}</span>` : "";
 
     html += `<div class="hist-item" onclick="toggleHistItem(this)">
       <div class="hist-item-head">
@@ -4575,8 +4786,8 @@ function renderHistory(){
           <div class="hist-date" style="margin-top:3px;">${WEEKDAYS_RU[d.getDay()]}, ${fmtDate(s.date)}</div>
         </div>
         <div class="hist-actions" onclick="event.stopPropagation()">
-          <button class="hist-act ed" title="Редактировать" onclick="openSessionEdit('${s.id}')">${pencilIcon(16)}</button>
-          <button class="hist-act del" title="Удалить" onclick="deleteSession('${s.id}')">${trashIcon(16)}</button>
+          <button class="hist-act ed" title="Редактировать" onclick="openSessionEdit('${escJsAttr(s.id)}')">${pencilIcon(16)}</button>
+          <button class="hist-act del" title="Удалить" onclick="deleteSession('${escJsAttr(s.id)}')">${trashIcon(16)}</button>
           <span class="more" title="Подробнее" onclick="toggleHistItem(this.closest('.hist-item'))"><span class="car">${chevronIcon(11)}</span></span>
         </div>
       </div>
@@ -4812,7 +5023,7 @@ function saveSessionEdit(){
   const dateEl = document.getElementById("editSessionDate");
   if(dateEl && dateEl.value) editSessionData.date = dateEl.value;
   sessions[idx] = editSessionData;
-  saveSessions(sessions);
+  if(!saveSessions(sessions)) return;
   editingSessionId = null; editSessionData = null;
   showToast("Изменения сохранены");
   switchView("history");
@@ -4945,8 +5156,8 @@ function buildBigChart(progress){
   const hitAreas = pts.map((p,i)=>`
     <div class="chart-point"
       style="left:${(p.x/w*100).toFixed(2)}%; top:${(p.y/h*100).toFixed(2)}%;"
-      onmouseenter="showChartTooltip(this,'${fmtDate(p.date)}',${p.v},'${p.reps||''}')"
-      onclick="showChartTooltip(this,'${fmtDate(p.date)}',${p.v},'${p.reps||''}')"
+      onmouseenter="showChartTooltip(this,'${escJsAttr(fmtDate(p.date))}',${p.v},'${escJsAttr(p.reps||'')}')"
+      onclick="showChartTooltip(this,'${escJsAttr(fmtDate(p.date))}',${p.v},'${escJsAttr(p.reps||'')}')"
     ></div>`).join("");
 
   return `<div class="chart-wrap">
@@ -5013,8 +5224,9 @@ function buildHeatmap(sessions, days=70){
   today.setHours(0,0,0,0);
   const cells = [];
   for(let i=days-1;i>=0;i--){
-    const d = new Date(today - i*86400000);
-    const dateStr = d.toISOString().slice(0,10);
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dateStr = dateToLocalISO(d);
     cells.push(`<div class="heatmap-cell ${trainedDates.has(dateStr)?'on':''}" title="${dateStr}"></div>`);
   }
   return `<div class="heatmap-grid">${cells.join("")}</div>`;
@@ -5112,7 +5324,7 @@ function renderStatsExerciseList(){
         <span class="stat-ex-pr">PR ${toDisplayWeight(pr.weight)} ${weightUnitLabel()}</span>
       </div>
       <div class="stat-ex-row">
-        <span class="stat-ex-current">Сейчас: <b>${toDisplayWeight(last.weight)} ${weightUnitLabel()} × ${last.reps}</b></span>
+        <span class="stat-ex-current">Сейчас: <b>${escHtml(toDisplayWeight(last.weight))} ${weightUnitLabel()} × ${escHtml(last.reps)}</b></span>
         ${spark}
       </div>
     </div>`;
@@ -5152,7 +5364,7 @@ function renderExerciseDetail(){
     <span class="name">${escHtml(name)}</span>
   </div>
   <div class="ex-meta" style="margin-bottom:16px;">
-    <span class="tag zdo">Группа: ${getExerciseGroup(name)}</span>
+    <span class="tag zdo">Группа: ${escHtml(getExerciseGroup(name))}</span>
     <span class="tag">PR ${toDisplayWeight(pr.weight)} ${weightUnitLabel()} · ${fmtDate(pr.date)}</span>
   </div>
   <div class="set-chips">
@@ -5169,9 +5381,9 @@ function renderExerciseDetail(){
     const ex = s.exercises.find(e=>e.name===name);
     const filled = ex.sets.filter(x=>x.weight||x.reps);
     const volume = filled.reduce((sum,x)=> sum + (parseFloat(x.weight)||0) * (parseFloat(x.reps)||0), 0);
-    const setsStr = filled.map(x=>`${toDisplayWeight(x.weight)||"–"}×${x.reps||"–"}`).join("  ");
+    const setsStr = filled.map(x=>`${escHtml(toDisplayWeight(x.weight)||"–")}×${escHtml(x.reps||"–")}`).join("  ");
     return `<div class="hist-item">
-      <div class="hist-item-head"><span class="hist-day">${s.templateName}</span><span class="hist-date">${fmtDate(s.date)}</span></div>
+      <div class="hist-item-head"><span class="hist-day">${escHtml(s.templateName)}</span><span class="hist-date">${fmtDate(s.date)}</span></div>
       <div class="hist-ex"><div>${setsStr}</div>${volume>0?`<div style="color:var(--text-faint); margin-top:4px;">Объём: ${Math.round(parseFloat(toDisplayWeight(volume)))} ${weightUnitLabel()}</div>`:''}</div>
     </div>`;
   }).join("");
@@ -5179,7 +5391,7 @@ function renderExerciseDetail(){
   wrap.innerHTML = html;
 }
 
-function exportStamp(){ return new Date().toISOString().slice(0,10); }
+function exportStamp(){ return todayISO(); }
 function downloadJSON(obj, filename){
   const blob = new Blob([JSON.stringify(obj,null,2)], {type:"application/json"});
   const url = URL.createObjectURL(blob);
@@ -5209,13 +5421,10 @@ function mergeById(existing, incoming){
   const items = incoming.filter(x=> x && typeof x === "object" && !Array.isArray(x));
   const withId = items.filter(x=> typeof x.id === "string" || typeof x.id === "number");
   const withoutId = items.filter(x=> !(typeof x.id === "string" || typeof x.id === "number"));
-  const map = new Map((existing||[]).map(x=>[x.id, x]));
-  withId.forEach(item=> map.set(item.id, item));
+  const map = new Map((existing||[]).map(x=>[String(x.id), x]));
+  withId.forEach(item=> map.set(String(item.id), { ...item, id:String(item.id) }));
   return Array.from(map.values()).concat(withoutId);
 }
-/* объект-ли это данных (не массив, не null) — используется при импорте, чтобы не упасть на кривом файле */
-function isPlainObject(v){ return !!v && typeof v === "object" && !Array.isArray(v); }
-
 document.getElementById("importFile").addEventListener("change", e=>{
   const file = e.target.files[0];
   if(!file) return;
@@ -5223,7 +5432,7 @@ document.getElementById("importFile").addEventListener("change", e=>{
   reader.onload = evt=>{
     try{
       const data = JSON.parse(evt.target.result);
-      if(!Array.isArray(data) && !isPlainObject(data)){
+      if(!Array.isArray(data) && !isDataObject(data)){
         showToast("Файл не похож на бэкап дневника");
         return;
       }
@@ -5235,10 +5444,10 @@ document.getElementById("importFile").addEventListener("change", e=>{
         if(Array.isArray(data.templates)){ saveTemplates(mergeById(loadTemplates(), data.templates)); updated.push("наборы"); }
         if(Array.isArray(data.sessions)){ saveSessions(mergeById(loadSessions(), data.sessions)); updated.push("историю тренировок"); }
         if(Array.isArray(data.library)){ saveLibrary(mergeById(loadLibrary(), data.library)); updated.push("список упражнений"); }
-        if(isPlainObject(data.bodyweights)){ safeSetItem(BW_KEY, JSON.stringify(Object.assign(loadBodyweights(), data.bodyweights))); updated.push("вес тела"); }
-        if(isPlainObject(data.measurements)){ safeSetItem(MEASURE_KEY, JSON.stringify(Object.assign(loadMeasurements(), data.measurements))); updated.push("замеры"); }
-        if(isPlainObject(data.profile)){ saveProfile(Object.assign(loadProfile(), data.profile)); updated.push("личную информацию"); }
-        if(isPlainObject(data.plans)){ savePlans(Object.assign(loadPlans(), data.plans)); }
+        if(isDataObject(data.bodyweights)){ safeSetItem(BW_KEY, JSON.stringify({ ...loadBodyweights(), ...data.bodyweights })); updated.push("вес тела"); }
+        if(isDataObject(data.measurements)){ safeSetItem(MEASURE_KEY, JSON.stringify({ ...loadMeasurements(), ...data.measurements })); updated.push("замеры"); }
+        if(isDataObject(data.profile)){ saveProfile({ ...loadProfile(), ...data.profile }); updated.push("личную информацию"); }
+        if(isDataObject(data.plans)){ savePlans({ ...loadPlans(), ...data.plans }); }
         if(typeof data.weightUnit === "string") saveWeightUnit(data.weightUnit);
       }
       if(!updated.length){ showToast("В файле не найдено знакомых данных"); return; }
@@ -5606,7 +5815,7 @@ function renderProfileScreen(){
   const sparkVals = bwDates.slice(-12).map(d=>parseNum(bwAll[d])).filter(v=>!isNaN(v));
   document.getElementById("profWeightSpark").innerHTML = sparkVals.length > 1 ? buildSparkline(sparkVals, 56, 20) : "";
 
-  document.getElementById("profileWeightDateInput").value = new Date().toISOString().slice(0,10);
+  document.getElementById("profileWeightDateInput").value = todayISO();
   document.getElementById("profileWeightInput").value = "";
   renderProfileWeightHistory();
 
@@ -5647,10 +5856,10 @@ function renderProfileWeightHistory(){
     }
     return `
     <div class="lib-row">
-      <span class="n">${fmtDate(d)} <span style="color:var(--text-dim); font-family:var(--font-mono); font-size:12px;">· <b style="color:var(--text);">${all[d]}</b> кг</span>${deltaHtml}</span>
+      <span class="n">${fmtDate(d)} <span style="color:var(--text-dim); font-family:var(--font-mono); font-size:12px;">· <b style="color:var(--text);">${escHtml(all[d])}</b> кг</span>${deltaHtml}</span>
       <div class="actions">
-        <button class="ed" onclick="editWeightEntry('${d}')">${pencilIcon(15)}</button>
-        <button class="del" onclick="deleteWeightEntry('${d}')">${trashIcon(15)}</button>
+        <button class="ed" onclick="editWeightEntry('${escJsAttr(d)}')">${pencilIcon(15)}</button>
+        <button class="del" onclick="deleteWeightEntry('${escJsAttr(d)}')">${trashIcon(15)}</button>
       </div>
     </div>`;
   }).join("");
@@ -5672,7 +5881,7 @@ function deleteWeightEntry(date){
 }
 function updateWeightFromProfile(){
   const val = document.getElementById("profileWeightInput").value.trim();
-  const date = document.getElementById("profileWeightDateInput").value || new Date().toISOString().slice(0,10);
+  const date = document.getElementById("profileWeightDateInput").value || todayISO();
   if(!val){ showToast("Введи значение веса"); return; }
   saveBodyweightForDate(date, val);
   showToast("Вес сохранён");
@@ -5684,7 +5893,7 @@ function updateWeightFromProfile(){
 async function bootApp(){
   library = loadLibrary();
   templates = loadTemplates();
-  document.getElementById("sessionDate").value = new Date().toISOString().slice(0,10);
+  document.getElementById("sessionDate").value = todayISO();
   renderToday();
   document.getElementById("accountUsernameLabel").textContent = currentUsername || "";
   let savedAccent = null, savedMode = null;
@@ -5705,7 +5914,7 @@ async function bootApp(){
     if(res.ok){
       const data = await res.json().catch(()=>({}));
       currentUsername = data.username;
-      try{ window.localStorage.setItem("dnevnik:lastUsername", currentUsername || ""); }catch(e){}
+      rememberUsername(currentUsername);
       await enterApp();
       return;
     }
@@ -5716,7 +5925,7 @@ async function bootApp(){
        без сети. Новые записи сохранятся на устройстве и уйдут на сервер сами,
        когда связь вернётся. */
     if(localStorage._hasLocalCache()){
-      try{ currentUsername = window.localStorage.getItem("dnevnik:lastUsername") || null; }catch(e2){}
+      try{ currentUsername = window.localStorage.getItem(LAST_USERNAME_KEY) || null; }catch(e2){}
       try{
         await enterApp();
         return;

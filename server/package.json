@@ -5,7 +5,8 @@
   "description": "Backend for the workout diary app: auth + per-user data storage.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "check": "node --check server.js && node --check auth.js && node --check db.js && node ../tests/client-syntax.cjs && node ../tests/storage-shim.cjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",

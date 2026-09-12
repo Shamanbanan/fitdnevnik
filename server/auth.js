@@ -4,6 +4,8 @@ const db = require("./db");
 
 const SESSION_COOKIE = "session_token";
 const SESSION_DAYS = 30;
+const MIN_PASSWORD_LENGTH = 8;
+const MAX_PASSWORD_LENGTH = 128;
 const INVITE_CODE = process.env.INVITE_CODE || "";
 
 if (!INVITE_CODE) {
@@ -34,6 +36,20 @@ function isValidUsername(u) {
   return typeof u === "string" && /^[a-zA-Z0-9_.-]{3,32}$/.test(u);
 }
 
+function passwordValidationError(password, prefix = "Пароль") {
+  if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
+    return `${prefix} должен быть не короче ${MIN_PASSWORD_LENGTH} символов`;
+  }
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    return `${prefix} должен быть не длиннее ${MAX_PASSWORD_LENGTH} символов`;
+  }
+  return null;
+}
+
+function isUniqueConstraint(error) {
+  return error && (error.code === "SQLITE_CONSTRAINT_UNIQUE" || error.code === "SQLITE_CONSTRAINT_PRIMARYKEY");
+}
+
 function createSessionForUser(userId) {
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
@@ -41,8 +57,8 @@ function createSessionForUser(userId) {
   return { token, expiresAt };
 }
 
-function setSessionCookie(res, token) {
-  res.cookie(SESSION_COOKIE, token, {
+function sessionCookieOptions() {
+  return {
     httpOnly: true,
     sameSite: "lax",
     /* secure-cookie требует HTTPS — включай только когда сайт реально отдаётся по https,
@@ -50,11 +66,16 @@ function setSessionCookie(res, token) {
     secure: process.env.COOKIE_SECURE === "true",
     maxAge: SESSION_DAYS * 24 * 60 * 60 * 1000,
     path: "/",
-  });
+  };
+}
+
+function setSessionCookie(res, token) {
+  res.cookie(SESSION_COOKIE, token, sessionCookieOptions());
 }
 
 function clearSessionCookie(res) {
-  res.clearCookie(SESSION_COOKIE, { path: "/" });
+  const { maxAge, ...options } = sessionCookieOptions();
+  res.clearCookie(SESSION_COOKIE, options);
 }
 
 function register(req, res) {
@@ -65,14 +86,16 @@ function register(req, res) {
   if (!isValidUsername(username)) {
     return res.status(400).json({ error: "Логин: 3-32 символа, латиница/цифры/._-" });
   }
-  if (typeof password !== "string" || password.length < 8) {
-    return res.status(400).json({ error: "Пароль должен быть не короче 8 символов" });
-  }
-  if (findUserByUsername.get(username)) {
-    return res.status(409).json({ error: "Такой логин уже занят" });
-  }
+  const passwordError = passwordValidationError(password);
+  if (passwordError) return res.status(400).json({ error: passwordError });
   const hash = bcrypt.hashSync(password, 12);
-  const info = insertUser.run(username, hash);
+  let info;
+  try {
+    info = insertUser.run(username, hash);
+  } catch (error) {
+    if (isUniqueConstraint(error)) return res.status(409).json({ error: "Такой логин уже занят" });
+    throw error;
+  }
   const { token } = createSessionForUser(info.lastInsertRowid);
   setSessionCookie(res, token);
   res.json({ username });
@@ -81,7 +104,8 @@ function register(req, res) {
 function login(req, res) {
   const { username, password } = req.body || {};
   const user = typeof username === "string" ? findUserByUsername.get(username) : null;
-  if (!user || !bcrypt.compareSync(String(password || ""), user.password_hash)) {
+  const passwordCanBeChecked = typeof password === "string" && password.length <= MAX_PASSWORD_LENGTH;
+  if (!user || !passwordCanBeChecked || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: "Неверный логин или пароль" });
   }
   const { token } = createSessionForUser(user.id);
@@ -100,7 +124,9 @@ function requireAuth(req, res, next) {
   const token = req.cookies && req.cookies[SESSION_COOKIE];
   if (!token) return res.status(401).json({ error: "Не авторизован" });
   const session = findSession.get(token);
-  if (!session || new Date(session.expires_at) < new Date()) {
+  const expiresAt = session ? Date.parse(session.expires_at) : NaN;
+  if (!session || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    if (session) deleteSession.run(token);
     clearSessionCookie(res);
     return res.status(401).json({ error: "Сессия истекла" });
   }
@@ -120,7 +146,8 @@ function me(req, res) {
 function changeUsername(req, res) {
   const { newUsername, password } = req.body || {};
   const user = findUserByIdFull.get(req.user.id);
-  if (!user || !bcrypt.compareSync(String(password || ""), user.password_hash)) {
+  const passwordCanBeChecked = typeof password === "string" && password.length <= MAX_PASSWORD_LENGTH;
+  if (!user || !passwordCanBeChecked || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: "Неверный пароль" });
   }
   if (!isValidUsername(newUsername)) {
@@ -129,22 +156,24 @@ function changeUsername(req, res) {
   if (newUsername === user.username) {
     return res.status(400).json({ error: "Это и есть текущий логин" });
   }
-  if (findUserByUsername.get(newUsername)) {
-    return res.status(409).json({ error: "Такой логин уже занят" });
+  try {
+    updateUsername.run(newUsername, user.id);
+  } catch (error) {
+    if (isUniqueConstraint(error)) return res.status(409).json({ error: "Такой логин уже занят" });
+    throw error;
   }
-  updateUsername.run(newUsername, user.id);
   res.json({ username: newUsername });
 }
 
 function changePassword(req, res) {
   const { currentPassword, newPassword } = req.body || {};
   const user = findUserByIdFull.get(req.user.id);
-  if (!user || !bcrypt.compareSync(String(currentPassword || ""), user.password_hash)) {
+  const passwordCanBeChecked = typeof currentPassword === "string" && currentPassword.length <= MAX_PASSWORD_LENGTH;
+  if (!user || !passwordCanBeChecked || !bcrypt.compareSync(currentPassword, user.password_hash)) {
     return res.status(401).json({ error: "Неверный текущий пароль" });
   }
-  if (typeof newPassword !== "string" || newPassword.length < 8) {
-    return res.status(400).json({ error: "Новый пароль должен быть не короче 8 символов" });
-  }
+  const passwordError = passwordValidationError(newPassword, "Новый пароль");
+  if (passwordError) return res.status(400).json({ error: passwordError });
   const hash = bcrypt.hashSync(newPassword, 12);
   updatePasswordHash.run(hash, user.id);
   /* разлогиниваем остальные сессии этого юзера (другие устройства/браузеры) —

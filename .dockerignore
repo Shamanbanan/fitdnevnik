@@ -4,4 +4,5 @@ data
 .env
 .git
 preview
+public/dnevnik
 *.pdf

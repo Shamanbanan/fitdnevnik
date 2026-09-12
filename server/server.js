@@ -9,6 +9,13 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.disable("x-powered-by");
+// The production topology has exactly one reverse proxy (Caddy). Without this,
+// every visitor shares the proxy IP and exhausts the same authentication limit.
+app.set("trust proxy", 1);
+app.use("/api", (req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
 app.use(express.json({ limit: "2mb" }));
 app.use(cookieParser());
 
@@ -51,11 +58,27 @@ app.put("/api/data/:key", requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.use(express.static(path.join(__dirname, "..", "public")));
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: "API-метод не найден" });
+});
+
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "index.html"));
 });
 
-app.listen(PORT, () => {
-  console.log(`dnevnik server listening on port ${PORT}`);
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  if (error && error.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "Некорректный JSON" });
+  }
+  console.error("[server] request failed", error);
+  res.status(500).json({ error: "Внутренняя ошибка сервера" });
 });
+
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`dnevnik server listening on port ${PORT}`);
+  });
+}
+
+module.exports = app;

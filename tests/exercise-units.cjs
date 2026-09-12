@@ -54,7 +54,41 @@ for (const script of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) new 
       const editor = [...document.querySelectorAll('#sessionEditWrap input[placeholder="lb"], #sessionEditWrap input[placeholder="кг"]')].map(i=>[i.value,i.placeholder]);
       toggleEditWeightUnit(0);
       const editorStored = editSessionData.exercises[0].sets[0].weight;
-      return { draft, mixedUnits, afterToggles, restored, saved, repeated, repeatedKg, editor, editorStored };
+
+      templates = [{ id:'favorite', name:'Favorite', fav:true, exercises:[{ name:'Machine', sets:1, reps:'10' }] }];
+      editingTemplateId = 'favorite';
+      draftExercises = JSON.parse(JSON.stringify(templates[0].exercises));
+      document.getElementById('tplNameInput').value = 'Favorite edited';
+      saveTemplate();
+      const favoritePreserved = templates[0].fav === true;
+
+      window.__xss = 0;
+      const injection = `<img src=x onerror="window.__xss=1">`;
+      const handlerInjection = `');window.__xss=1;//`;
+      saveLibrary([{ id:'unsafe-library', name:'Unsafe exercise', group:injection }]);
+      library = loadLibrary();
+      saveSessions([{ id:'unsafe-session', date:'2026-09-12', templateName:injection, exercises:[
+        { name:'Unsafe exercise', sets:[{ weight:'10', reps:handlerInjection }] }
+      ] }]);
+      currentExerciseDetail = 'Unsafe exercise';
+      renderExerciseDetail();
+      const detailHasInjectedElement = !!document.querySelector('#exerciseDetailWrap img');
+      const chartPoint = document.querySelector('#exerciseDetailWrap .chart-point');
+      if(chartPoint) chartPoint.click();
+
+      safeSetItem(MEASURE_KEY, JSON.stringify({ '2026-09-12': { neck:injection } }));
+      measureHistoryExpanded = true;
+      renderMeasureHistory();
+      const measurementsHaveInjectedElement = !!document.querySelector('#measureHistoryList img');
+
+      safeSetItem(S_KEY, JSON.stringify({ malformed:true }));
+      const malformedSessionsLength = loadSessions().length;
+      const localDate = dateToLocalISO(new Date(2026, 8, 12, 0, 30));
+      return {
+        draft, mixedUnits, afterToggles, restored, saved, repeated, repeatedKg, editor, editorStored,
+        favoritePreserved, detailHasInjectedElement, measurementsHaveInjectedElement,
+        xssExecuted: window.__xss, malformedSessionsLength, localDate
+      };
     });
     assert.deepEqual(result.mixedUnits, ['lb','kg']);
     assert.equal(result.draft.exercises[0].sets[0].weight, '45.359237');
@@ -66,7 +100,13 @@ for (const script of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) new 
     assert.deepEqual(result.repeatedKg, ['45.4','45.359237']);
     assert.deepEqual(result.editor, [['100','lb'],['50','кг']]);
     assert.equal(result.editorStored, '45.359237');
+    assert.equal(result.favoritePreserved, true);
+    assert.equal(result.detailHasInjectedElement, false);
+    assert.equal(result.measurementsHaveInjectedElement, false);
+    assert.equal(result.xssExecuted, 0);
+    assert.equal(result.malformedSessionsLength, 0);
+    assert.equal(result.localDate, '2026-09-12');
     assert.deepEqual(errors, []);
-    console.log('PASS: mixed units, precise conversion, 20 toggles, draft restore, finish, previous weights in lb/kg, history editor, no browser errors');
+    console.log('PASS: units, drafts, history editor, local dates, safe rendering, malformed imports, favorite preservation, no browser errors');
   } finally { await browser.close(); }
 })().catch(e=>{console.error(e);process.exitCode=1;});

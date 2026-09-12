@@ -3,6 +3,7 @@ server/node_modules/
 data/
 .env
 preview/
+public/dnevnik/
 
 # старые локальные копии/черновики, не часть деплоя
 dnevnik_v23_redesign.html
