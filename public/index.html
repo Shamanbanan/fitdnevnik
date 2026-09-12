@@ -1807,6 +1807,7 @@ async function enterApp(){
 function createRemoteStorageShim(){
   const cache = {};
   const debouncedPuts = {};
+  const inFlight = new Set();
   const CACHE_PREFIX = "dnevnik:cache:";
   const PENDING_KEY = "dnevnik:pendingSync";
 
@@ -1814,31 +1815,46 @@ function createRemoteStorageShim(){
     try{ return JSON.parse(window.localStorage.getItem(PENDING_KEY)) || {}; }catch(e){ return {}; }
   }
   function savePending(pending){
-    try{ window.localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); }catch(e){}
+    window.localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
   }
-  function markPending(key){
+  // The durable outbox stores the value itself, before any network request.
+  function markPending(key, value){
     const pending = loadPending();
-    if(!pending[key]){ pending[key] = true; savePending(pending); }
-  }
-  function clearPending(key){
-    const pending = loadPending();
-    if(pending[key]){ delete pending[key]; savePending(pending); }
+    pending[key] = value;
+    savePending(pending);
   }
   function persistLocal(key, value){
-    try{ window.localStorage.setItem(CACHE_PREFIX + key, value); }catch(e){ /* локальное хранилище недоступно/переполнено — синхронно с сервером всё равно попробуем */ }
+    window.localStorage.setItem(CACHE_PREFIX + key, value);
   }
-
-  function sendToServer(key){
-    return fetch("/api/data/" + encodeURIComponent(key), {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      credentials: "same-origin", body: JSON.stringify({ value: cache[key] })
-    }).then(res=>{
+  async function sendToServer(key){
+    if(inFlight.has(key)) return;
+    const pending = loadPending();
+    if(!Object.prototype.hasOwnProperty.call(pending, key)) return;
+    const value = typeof pending[key] === "string" ? pending[key] : window.localStorage.getItem(CACHE_PREFIX + key);
+    if(value === null) return;
+    inFlight.add(key);
+    let acknowledged = false;
+    try{
+      const res = await fetch("/api/data/" + encodeURIComponent(key), {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        credentials: "same-origin", body: JSON.stringify({ value })
+      });
       if(!res.ok) throw new Error("save failed");
-      clearPending(key);
-    }).catch(()=>{
-      markPending(key);
-      if(typeof showToast === "function") showToast("Нет соединения — сохранено на устройстве, отправим на сервер позже");
-    });
+      const latest = loadPending();
+      const latestValue = typeof latest[key] === "string" ? latest[key] : window.localStorage.getItem(CACHE_PREFIX + key);
+      if(latestValue === value){
+        // Save the acknowledged value before removing its durable outbox entry.
+        persistLocal(key, value);
+        delete latest[key];
+        savePending(latest);
+      }
+      acknowledged = true;
+    }catch(e){
+      if(typeof showToast === "function") showToast("Нет подтверждения сервера — запись сохранена на устройстве");
+    }finally{
+      inFlight.delete(key);
+    }
+    if(acknowledged && Object.prototype.hasOwnProperty.call(loadPending(), key)) putRemote(key);
   }
 
   function putRemote(key){
@@ -1865,12 +1881,19 @@ function createRemoteStorageShim(){
       const pending = loadPending();
       Object.keys(pending).forEach(k=>{
         const local = window.localStorage.getItem(CACHE_PREFIX + k);
-        if(local !== null) cache[k] = local;
+        if(typeof pending[k] === "string") cache[k] = pending[k];
+        else if(local !== null) cache[k] = local;
+      });
+      Object.keys(cache).forEach(k=>{
+        if(!Object.prototype.hasOwnProperty.call(pending, k)){
+          try{ persistLocal(k, cache[k]); }catch(e){ console.error("Local cache unavailable", e); }
+        }
       });
       if(Object.keys(pending).length) retryPending();
     },
     /* есть ли вообще локальный кэш с прошлого успешного входа (для офлайн-открытия) */
     _hasLocalCache(){
+      if(Object.keys(loadPending()).length) return true;
       try{
         for(let i=0;i<window.localStorage.length;i++){
           if(window.localStorage.key(i).indexOf(CACHE_PREFIX) === 0) return true;
@@ -1887,18 +1910,30 @@ function createRemoteStorageShim(){
           if(k.indexOf(CACHE_PREFIX) === 0) cache[k.slice(CACHE_PREFIX.length)] = window.localStorage.getItem(k);
         }
       }catch(e){}
+      const pending = loadPending();
+      Object.keys(pending).forEach(k=>{
+        if(typeof pending[k] === "string") cache[k] = pending[k];
+      });
     },
-    getItem(key){ return Object.prototype.hasOwnProperty.call(cache, key) ? cache[key] : null; },
+    getItem(key){
+      const pending = loadPending();
+      if(typeof pending[key] === "string") return pending[key];
+      return Object.prototype.hasOwnProperty.call(cache, key) ? cache[key] : null;
+    },
     setItem(key, value){
       value = String(value);
+      markPending(key, value);
       cache[key] = value;
-      persistLocal(key, value);
+      // The outbox is already durable even if the secondary cache is full.
+      try{ persistLocal(key, value); }catch(e){ console.error("Local cache unavailable", e); }
       putRemote(key);
     },
     removeItem(key){
       delete cache[key];
       try{ window.localStorage.removeItem(CACHE_PREFIX + key); }catch(e){}
-      clearPending(key);
+      const pending = loadPending();
+      delete pending[key];
+      savePending(pending);
     }
   };
 }
@@ -2254,7 +2289,7 @@ function loadSessions(){
   if(changed) safeSetItem(S_KEY, JSON.stringify(list));
   return list;
 }
-function saveSessions(list){ safeSetItem(S_KEY, JSON.stringify(list)); }
+function saveSessions(list){ return safeSetItem(S_KEY, JSON.stringify(list)); }
 
 const BW_KEY = "dnevnik_bodyweight_v1";
 function loadBodyweights(){ try{ return JSON.parse(localStorage.getItem(BW_KEY)) || {}; }catch(e){ return {}; } }
@@ -3981,7 +4016,7 @@ function saveSession(){
 
   const sessions = loadSessions();
   sessions.push({ id:"s"+Date.now()+Math.random().toString(36).slice(2,7), date, templateId: tpl.id, templateName: tpl.name, exercises, rating: sessionRating, savedAt: new Date().toISOString() });
-  saveSessions(sessions);
+  if(!saveSessions(sessions)) return;
   clearDraft(tpl.id, date);
   showToast("Тренировка сохранена");
   sessionRating = 0;
